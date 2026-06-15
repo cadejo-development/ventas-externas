@@ -57,6 +57,11 @@ async function verDetalle(id) {
 
 function cerrarDrawer() { drawer.value = false }
 
+function descargarExcel(id) {
+  const url = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/cadejo-ventas')
+  window.open(`${url}/ordenes/${id}/export/excel`, '_blank')
+}
+
 const estadoLabel = (e) => ({
   borrador: 'Borrador', pendiente_aprobacion: 'Pendiente de aprobación',
   aprobada: 'Aprobada', rechazada: 'Rechazada', completada: 'Completada',
@@ -277,6 +282,16 @@ const estadoLabel = (e) => ({
                 </div>
 
               </template>
+            </div>
+
+            <!-- Footer: descarga Excel (solo órdenes aprobadas o completadas) -->
+            <div v-if="detalleOrden && ['aprobada','completada'].includes(detalleOrden.estado)"
+              class="flex-shrink-0 px-6 py-4 border-t border-stone-800 bg-stone-950">
+              <button @click="descargarExcel(detalleOrden.id)"
+                class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-sm transition-colors">
+                <i class="fa-solid fa-file-excel" />
+                Descargar Excel
+              </button>
             </div>
           </div>
         </Transition>
