@@ -14,6 +14,16 @@ const productos   = ref([])
 const loading     = ref(true)
 const saving      = ref(false)
 
+const productosPorBodega = computed(() => {
+  const grupos = {}
+  for (const p of productos.value) {
+    const key = p.bodega || 'Otros'
+    if (!grupos[key]) grupos[key] = []
+    grupos[key].push(p)
+  }
+  return grupos
+})
+
 // ── Autocomplete cliente ──────────────────────────────────────────────────────
 const clienteQuery   = ref('')
 const showDropdown   = ref(false)
@@ -284,8 +294,8 @@ onMounted(async () => {
               <label class="label">Producto</label>
               <select v-model="item.producto_id" @change="onProductoChange(idx)" class="select text-sm">
                 <option :value="null">— Seleccionar —</option>
-                <optgroup v-for="bodega in ['BGA. PROD TERM CADEJO','BGA. PROD TERM SIVAR','BGA. PROMOCIONALES']" :key="bodega" :label="bodega">
-                  <option v-for="p in productos.filter(x => x.bodega === bodega)" :key="p.id" :value="p.id">
+                <optgroup v-for="(prods, bodega) in productosPorBodega" :key="bodega" :label="bodega">
+                  <option v-for="p in prods" :key="p.id" :value="p.id">
                     {{ p.nombre }} ({{ p.existencias }} disp.)
                   </option>
                 </optgroup>
