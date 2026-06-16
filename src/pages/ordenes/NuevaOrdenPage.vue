@@ -14,6 +14,8 @@ const productos   = ref([])
 const loading     = ref(true)
 const saving      = ref(false)
 
+const todayISO = new Date().toISOString().slice(0, 10)
+
 const productosPorBodega = computed(() => {
   const grupos = {}
   for (const p of productos.value) {
@@ -43,13 +45,12 @@ function seleccionarCliente(c) {
   form.value.cliente_id = c.id
   clienteQuery.value    = c.nombres
   showDropdown.value    = false
-  // Si es solo contado, forzar contado
   if (c.limite_credito <= 0) form.value.tipo_venta = 'contado'
 }
 
 function limpiarCliente() {
-  form.value.cliente_id   = null
-  form.value.tipo_venta   = 'contado'
+  form.value.cliente_id       = null
+  form.value.tipo_venta       = 'contado'
   form.value.plazo_solicitado = 0
   clienteQuery.value = ''
   showDropdown.value = false
@@ -65,20 +66,35 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 // ── Formulario ────────────────────────────────────────────────────────────────
 const form = ref({
   cliente_id: null, tipo_venta: 'contado', plazo_solicitado: 0, notas: '',
-  creado_por: session?.nombre || '', items: [],
+  creado_por: session?.nombre || '',
+  fecha_facturacion: todayISO,
+  fecha_entrega: todayISO,
+  items: [],
 })
 
-const clienteSeleccionado = computed(() => allClientes.value.find(c => c.id === form.value.cliente_id))
-const esCredito           = computed(() => form.value.tipo_venta === 'credito')
-const limiteCredito       = computed(() => clienteSeleccionado.value?.limite_credito || 0)
-const plazoMaximo         = computed(() => clienteSeleccionado.value?.plazo_credito || 0)
+const clienteSeleccionado  = computed(() => allClientes.value.find(c => c.id === form.value.cliente_id))
+const esCredito            = computed(() => form.value.tipo_venta === 'credito')
+const clienteTieneCredito  = computed(() => (clienteSeleccionado.value?.limite_credito || 0) > 0)
+const limiteCredito        = computed(() => clienteSeleccionado.value?.limite_credito || 0)
+const plazoMaximo          = computed(() => clienteSeleccionado.value?.plazo_credito || 0)
 
-const IVA = 0.13
+const IVA       = 0.13
 const subtotal  = computed(() => form.value.items.reduce((s, i) => s + i.cantidad * i.precio_unitario, 0))
 const totalIva  = computed(() => form.value.items.reduce((s, i) => i.exento ? s : s + i.cantidad * i.precio_unitario * IVA, 0))
 const total     = computed(() => subtotal.value + totalIva.value)
 const excedeLimite  = computed(() => esCredito.value && limiteCredito.value > 0 && total.value > limiteCredito.value)
-const plazoInvalido = computed(() => esCredito.value && form.value.plazo_solicitado > plazoMaximo.value && plazoMaximo.value > 0)
+const excedePlazo   = computed(() => esCredito.value && plazoMaximo.value > 0 && form.value.plazo_solicitado > plazoMaximo.value)
+
+// null = auto-aprobada | 'exceso_limite' | 'cambio_credito'
+const necesitaAprobacion = computed(() => {
+  if (!clienteSeleccionado.value) return null
+  if (esCredito.value) {
+    if (!clienteTieneCredito.value) return 'cambio_credito'
+    if (excedeLimite.value)  return 'exceso_limite'
+    if (excedePlazo.value)   return 'cambio_credito'
+  }
+  return null
+})
 
 function addItem() {
   form.value.items.push({ producto_id: null, nombre_producto: '', cantidad: 1, precio_unitario: 0, exento: true })
@@ -98,7 +114,6 @@ function onProductoChange(idx) {
 async function guardar() {
   if (!form.value.cliente_id) { toast('Selecciona un cliente', 'error'); return }
   if (!form.value.items.length) { toast('Agrega al menos un producto', 'error'); return }
-  if (plazoInvalido.value) { toast(`Plazo máximo: ${plazoMaximo.value} días`, 'warning'); return }
 
   saving.value = true
   try {
@@ -108,7 +123,7 @@ async function guardar() {
         producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio_unitario,
       }))
     })
-    toast('Orden guardada exitosamente')
+    toast(necesitaAprobacion.value ? 'Orden enviada a aprobación' : 'Orden aprobada y guardada')
     router.push('/ordenes')
   } catch (e) {
     toast(e.response?.data?.message || 'Error al guardar la orden', 'error')
@@ -125,11 +140,10 @@ onMounted(async () => {
     ])
     allClientes.value = rc.data.data || []
     productos.value   = rp.data || []
-    // Cargar más páginas de clientes si hay
-    const total = rc.data.last_page || 1
-    if (total > 1) {
+    const totalPags = rc.data.last_page || 1
+    if (totalPags > 1) {
       const rest = await Promise.all(
-        Array.from({ length: total - 1 }, (_, i) => api.get('clientes', { params: { page: i + 2 } }))
+        Array.from({ length: totalPags - 1 }, (_, i) => api.get('clientes', { params: { page: i + 2 } }))
       )
       rest.forEach(r => { allClientes.value.push(...(r.data.data || [])) })
     }
@@ -169,7 +183,6 @@ onMounted(async () => {
           <div>
             <label class="label">Cliente *</label>
             <div class="relative" ref="clienteRef">
-              <!-- Input de búsqueda -->
               <div class="relative">
                 <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500 text-xs pointer-events-none" />
                 <input
@@ -213,7 +226,7 @@ onMounted(async () => {
               </div>
             </div>
 
-            <!-- Info del cliente seleccionado -->
+            <!-- Info cliente seleccionado -->
             <div v-if="clienteSeleccionado"
               class="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg bg-amber-900/10 border border-amber-800/30 animate-fade-in">
               <i class="fa-solid fa-building text-amber-500/60 text-xs" />
@@ -229,7 +242,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- Tipo de venta + Plazo -->
+          <!-- Tipo de venta + Plazo/Notas -->
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="label">Tipo de venta</label>
@@ -242,7 +255,7 @@ onMounted(async () => {
                   <i class="fa-solid fa-money-bill-wave mr-1.5" />Contado
                 </button>
                 <button type="button" @click="form.tipo_venta = 'credito'"
-                  :disabled="!clienteSeleccionado || clienteSeleccionado.limite_credito <= 0"
+                  :disabled="!clienteSeleccionado"
                   class="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   :class="form.tipo_venta === 'credito'
                     ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
@@ -254,10 +267,10 @@ onMounted(async () => {
 
             <div v-if="esCredito">
               <label class="label">Plazo solicitado (días)</label>
-              <input v-model.number="form.plazo_solicitado" type="number" min="0" :max="plazoMaximo || 999"
-                class="input" :class="plazoInvalido ? 'border-red-500/60 focus:ring-red-500/40' : ''" />
-              <p v-if="plazoInvalido" class="text-xs text-red-400 mt-1">
-                <i class="fa-solid fa-triangle-exclamation mr-1" />Máximo {{ plazoMaximo }} días
+              <input v-model.number="form.plazo_solicitado" type="number" min="0"
+                class="input" :class="excedePlazo ? 'border-amber-500/60' : ''" />
+              <p v-if="excedePlazo" class="text-xs text-amber-400 mt-1">
+                <i class="fa-solid fa-triangle-exclamation mr-1" />Supera el plazo estándar ({{ plazoMaximo }} días) — requiere aprobación
               </p>
             </div>
             <div v-else>
@@ -265,6 +278,50 @@ onMounted(async () => {
               <input v-model="form.notas" type="text" placeholder="Opcional..." class="input" />
             </div>
           </div>
+
+          <!-- Notas (cuando es crédito) -->
+          <div v-if="esCredito">
+            <label class="label">Notas <span class="text-stone-600 font-normal normal-case">(opcional)</span></label>
+            <input v-model="form.notas" type="text" placeholder="Opcional..." class="input" />
+          </div>
+
+          <!-- Fechas -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="label">Fecha de facturación</label>
+              <input v-model="form.fecha_facturacion" type="date" :min="todayISO" class="input" />
+            </div>
+            <div>
+              <label class="label">Fecha de entrega</label>
+              <input v-model="form.fecha_entrega" type="date" :min="todayISO" class="input" />
+            </div>
+          </div>
+
+          <!-- Indicador de estado de aprobación -->
+          <Transition name="fade">
+            <div v-if="clienteSeleccionado">
+              <div v-if="necesitaAprobacion === 'exceso_limite'"
+                class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40">
+                <i class="fa-solid fa-clock text-amber-400 mt-0.5 text-sm flex-shrink-0" />
+                <p class="text-xs text-amber-300">
+                  Esta orden <strong>excede el límite de crédito</strong> (${{ limiteCredito.toLocaleString() }}) —
+                  se enviará a aprobación del jefe de ventas.
+                </p>
+              </div>
+              <div v-else-if="necesitaAprobacion === 'cambio_credito'"
+                class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-blue-900/20 border border-blue-700/40">
+                <i class="fa-solid fa-clock text-blue-400 mt-0.5 text-sm flex-shrink-0" />
+                <p class="text-xs text-blue-300">
+                  Esta orden requiere <strong>aprobación del jefe de ventas</strong> por las condiciones de crédito solicitadas.
+                </p>
+              </div>
+              <div v-else
+                class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-green-900/20 border border-green-700/30">
+                <i class="fa-solid fa-circle-check text-green-400 text-sm" />
+                <p class="text-xs text-green-300">Esta orden se <strong>aprobará automáticamente</strong> al guardar.</p>
+              </div>
+            </div>
+          </Transition>
         </div>
       </div>
 
@@ -346,17 +403,6 @@ onMounted(async () => {
           <div class="flex justify-between text-base font-bold text-neutral-100 pt-1 border-t border-stone-800/40">
             <span>Total</span><span class="tabular-nums text-amber-400">{{ fmt(total) }}</span>
           </div>
-
-          <!-- Alerta límite de crédito -->
-          <div v-if="excedeLimite"
-            class="mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40">
-            <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5 text-sm flex-shrink-0" />
-            <p class="text-xs text-amber-300">
-              Esta orden excede el límite de crédito del cliente
-              (<span class="font-semibold">${{ limiteCredito.toLocaleString() }}</span>).
-              Se enviará a aprobación del jefe de ventas.
-            </p>
-          </div>
         </div>
       </div>
 
@@ -367,8 +413,9 @@ onMounted(async () => {
         </RouterLink>
         <button type="submit" :disabled="saving" class="btn btn-primary btn-lg">
           <i v-if="saving" class="fa-solid fa-circle-notch fa-spin" />
+          <i v-else-if="necesitaAprobacion" class="fa-solid fa-paper-plane" />
           <i v-else class="fa-solid fa-floppy-disk" />
-          {{ saving ? 'Guardando...' : 'Guardar orden' }}
+          {{ saving ? 'Guardando...' : necesitaAprobacion ? 'Enviar a aprobación' : 'Guardar orden' }}
         </button>
       </div>
     </form>
