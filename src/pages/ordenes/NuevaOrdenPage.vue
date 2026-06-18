@@ -9,10 +9,11 @@ const router  = useRouter()
 const session = getSession()
 const { push: toast } = useToast()
 
-const allClientes = ref([])
-const productos   = ref([])
-const loading     = ref(true)
-const saving      = ref(false)
+const allClientes     = ref([])
+const productos       = ref([])
+const catalogoLineas  = ref({})   // { [catalogo_id]: { [producto_id]: { precio_sin_iva, precio_con_iva } } }
+const loading         = ref(true)
+const saving          = ref(false)
 
 const todayISO = new Date().toISOString().slice(0, 10)
 
@@ -41,11 +42,19 @@ const clientesFiltrados = computed(() => {
 
 function onClienteInput() { showDropdown.value = true }
 
-function seleccionarCliente(c) {
+async function seleccionarCliente(c) {
   form.value.cliente_id = c.id
   clienteQuery.value    = c.nombres
   showDropdown.value    = false
   if (c.limite_credito <= 0) form.value.tipo_venta = 'contado'
+
+  // Cargar precios del catálogo asignado al cliente
+  if (c.catalogo_precio_id && !catalogoLineas.value[c.catalogo_precio_id]) {
+    try {
+      const { data } = await api.get(`catalogos-precio/${c.catalogo_precio_id}/para-orden`)
+      catalogoLineas.value[c.catalogo_precio_id] = data.data ?? {}
+    } catch { /* sin catálogo */ }
+  }
 }
 
 function limpiarCliente() {
@@ -85,9 +94,10 @@ const total     = computed(() => subtotal.value + totalIva.value)
 const excedeLimite  = computed(() => esCredito.value && limiteCredito.value > 0 && total.value > limiteCredito.value)
 const excedePlazo   = computed(() => esCredito.value && plazoMaximo.value > 0 && form.value.plazo_solicitado > plazoMaximo.value)
 
-// null = auto-aprobada | 'exceso_limite' | 'cambio_credito'
+// null = auto-aprobada | 'exceso_limite' | 'cambio_credito' | 'cambio_precio'
 const necesitaAprobacion = computed(() => {
   if (!clienteSeleccionado.value) return null
+  if (hayPreciosModificados.value) return 'cambio_precio'
   if (esCredito.value) {
     if (!clienteTieneCredito.value) return 'cambio_credito'
     if (excedeLimite.value)  return 'exceso_limite'
@@ -97,19 +107,44 @@ const necesitaAprobacion = computed(() => {
 })
 
 function addItem() {
-  form.value.items.push({ producto_id: null, nombre_producto: '', cantidad: 1, precio_unitario: 0, exento: true })
+  form.value.items.push({ producto_id: null, nombre_producto: '', cantidad: 1, precio_unitario: 0, exento: true, precio_catalogo: null, precio_modificado: false })
 }
 function removeItem(idx) { form.value.items.splice(idx, 1) }
 
 function onProductoChange(idx) {
-  const item = form.value.items[idx]
-  const prod = productos.value.find(p => p.id == item.producto_id)
-  if (prod) {
-    item.nombre_producto = prod.nombre
-    item.precio_unitario = prod.precio || 0
-    item.exento = prod.exento
+  const item   = form.value.items[idx]
+  const prod   = productos.value.find(p => p.id == item.producto_id)
+  if (!prod) return
+
+  item.nombre_producto = prod.nombre
+  item.exento          = prod.exento
+
+  // Buscar precio en catálogo del cliente
+  const catId = clienteSeleccionado.value?.catalogo_precio_id
+  const lineas = catId ? (catalogoLineas.value[catId] ?? {}) : {}
+  const lineaPrecio = lineas[prod.id]
+
+  if (lineaPrecio) {
+    item.precio_unitario  = lineaPrecio.precio_sin_iva
+    item.precio_catalogo  = lineaPrecio.precio_sin_iva   // referencia original
+    item.precio_modificado = false
+  } else {
+    item.precio_unitario  = prod.precio || 0
+    item.precio_catalogo  = null
+    item.precio_modificado = false
   }
 }
+
+function onPrecioChange(idx) {
+  const item = form.value.items[idx]
+  if (item.precio_catalogo !== null) {
+    item.precio_modificado = item.precio_unitario !== item.precio_catalogo
+  }
+}
+
+const hayPreciosModificados = computed(() =>
+  form.value.items.some(i => i.precio_modificado)
+)
 
 async function guardar() {
   if (!form.value.cliente_id) { toast('Selecciona un cliente', 'error'); return }
@@ -230,12 +265,18 @@ onMounted(async () => {
             <div v-if="clienteSeleccionado"
               class="mt-2 flex items-center gap-3 px-3 py-2 rounded-lg bg-amber-900/10 border border-amber-800/30 animate-fade-in">
               <i class="fa-solid fa-building text-amber-500/60 text-xs" />
-              <div class="flex-1 min-w-0">
+              <div class="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span class="text-xs text-amber-300 font-medium">{{ clienteSeleccionado.nombres }}</span>
+                <template v-if="clienteSeleccionado.catalogo_nombre">
+                  <span class="text-stone-600">·</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/40 border border-amber-700/40 text-amber-400 font-semibold">
+                    <i class="fa-solid fa-tag mr-1" />{{ clienteSeleccionado.catalogo_nombre }}
+                  </span>
+                </template>
                 <template v-if="clienteSeleccionado.limite_credito > 0">
-                  <span class="text-stone-600 mx-2">·</span>
+                  <span class="text-stone-600">·</span>
                   <span class="text-xs text-stone-400">Límite: <span class="text-amber-400 font-semibold">${{ clienteSeleccionado.limite_credito.toLocaleString() }}</span></span>
-                  <span class="text-stone-600 mx-2">·</span>
+                  <span class="text-stone-600">·</span>
                   <span class="text-xs text-stone-400">Plazo: <span class="text-stone-300">{{ clienteSeleccionado.plazo_credito }} días</span></span>
                 </template>
               </div>
@@ -308,6 +349,13 @@ onMounted(async () => {
                   se enviará a aprobación del jefe de ventas.
                 </p>
               </div>
+              <div v-else-if="necesitaAprobacion === 'cambio_precio'"
+                class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-900/20 border border-amber-700/40">
+                <i class="fa-solid fa-tag text-amber-400 mt-0.5 text-sm flex-shrink-0" />
+                <p class="text-xs text-amber-300">
+                  Uno o más precios fueron <strong>modificados del catálogo</strong> — se enviará a aprobación del jefe de ventas.
+                </p>
+              </div>
               <div v-else-if="necesitaAprobacion === 'cambio_credito'"
                 class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-blue-900/20 border border-blue-700/40">
                 <i class="fa-solid fa-clock text-blue-400 mt-0.5 text-sm flex-shrink-0" />
@@ -365,12 +413,22 @@ onMounted(async () => {
             </div>
 
             <div class="w-28 flex-shrink-0">
-              <label class="label">Precio unit.</label>
+              <label class="label flex items-center gap-1">
+                Precio unit.
+                <span v-if="item.precio_modificado" class="text-amber-400 text-[10px]" title="Precio modificado del catálogo — requiere aprobación">
+                  <i class="fa-solid fa-triangle-exclamation" />
+                </span>
+              </label>
               <div class="relative">
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">$</span>
                 <input v-model.number="item.precio_unitario" type="number" min="0" step="0.01"
-                  class="input text-sm pl-6 text-right" />
+                  @input="onPrecioChange(idx)"
+                  class="input text-sm pl-6 text-right"
+                  :class="item.precio_modificado ? 'border-amber-500/60 bg-amber-900/10' : ''" />
               </div>
+              <p v-if="item.precio_catalogo !== null && item.precio_modificado" class="text-[10px] text-stone-500 mt-0.5 text-right">
+                Catálogo: ${{ item.precio_catalogo?.toFixed(2) }}
+              </p>
             </div>
 
             <div class="w-24 flex-shrink-0">

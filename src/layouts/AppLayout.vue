@@ -39,6 +39,13 @@
             </span>
           </template>
         </SidebarNavItem>
+
+        <template v-if="session?.rol === 'jefe_ventas'">
+          <div class="px-3 pb-1 pt-4">
+            <span class="text-[9px] font-bold uppercase tracking-[0.15em] text-stone-600">Configuración</span>
+          </div>
+          <SidebarNavItem to="/mantenimiento" icon="fa-solid fa-sliders">Mantenimiento</SidebarNavItem>
+        </template>
       </nav>
 
       <!-- User footer -->
@@ -85,6 +92,7 @@
           <SidebarNavItem to="/productos" icon="fa-solid fa-cubes"     @click="mobileOpen=false">Productos</SidebarNavItem>
           <SidebarNavItem to="/ordenes"   icon="fa-solid fa-file-invoice-dollar" @click="mobileOpen=false">Órdenes</SidebarNavItem>
           <SidebarNavItem v-if="session?.rol === 'jefe_ventas'" to="/aprobaciones" icon="fa-solid fa-shield-check" @click="mobileOpen=false">Aprobaciones</SidebarNavItem>
+          <SidebarNavItem v-if="session?.rol === 'jefe_ventas'" to="/mantenimiento" icon="fa-solid fa-sliders" @click="mobileOpen=false">Mantenimiento</SidebarNavItem>
         </nav>
       </aside>
     </Transition>

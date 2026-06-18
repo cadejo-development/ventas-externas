@@ -5,12 +5,13 @@ import PageHeader from '../../components/PageHeader.vue'
 import { useToast } from '../../composables/useToast.js'
 
 const { push: toast } = useToast()
-const clientes = ref([])
-const meta     = ref({ current_page: 1, last_page: 1, total: 0 })
-const loading  = ref(true)
-const search   = ref('')
+const clientes   = ref([])
+const catalogos  = ref([])
+const meta       = ref({ current_page: 1, last_page: 1, total: 0 })
+const loading    = ref(true)
+const search     = ref('')
 const filtroTipo = ref('')
-const page     = ref(1)
+const page       = ref(1)
 
 const showModal = ref(false)
 const editing   = ref(null)
@@ -18,7 +19,14 @@ const saving    = ref(false)
 const form      = ref(emptyForm())
 
 function emptyForm() {
-  return { nombres: '', nom_comercial: '', nit: '', registro_iva: '', email: '', telefono: '', direccion: '', exento: false, plazo_credito: 0, limite_credito: 0 }
+  return { nombres: '', nom_comercial: '', nit: '', registro_iva: '', email: '', telefono: '', direccion: '', exento: false, plazo_credito: 0, limite_credito: 0, catalogo_precio_id: null }
+}
+
+async function cargarCatalogos() {
+  try {
+    const { data } = await api.get('catalogos-precio')
+    catalogos.value = (data.data ?? []).filter(c => c.activo)
+  } catch { /* silencioso */ }
 }
 
 async function cargar(p = page.value) {
@@ -30,7 +38,7 @@ async function cargar(p = page.value) {
   finally { loading.value = false }
 }
 
-onMounted(() => cargar(1))
+onMounted(() => { cargar(1); cargarCatalogos() })
 
 let debounce
 watch([search, filtroTipo], () => { clearTimeout(debounce); debounce = setTimeout(() => cargar(1), 350) })
@@ -110,6 +118,7 @@ const esCredito = (c) => c.limite_credito > 0
             <tr>
               <th>Cliente</th>
               <th>NIT</th>
+              <th>Catálogo</th>
               <th>Tipo</th>
               <th class="text-right">Límite crédito</th>
               <th class="text-right hidden md:table-cell">Plazo</th>
@@ -132,6 +141,12 @@ const esCredito = (c) => c.limite_credito > 0
               </td>
               <td class="text-stone-400 text-xs font-mono">{{ c.nit || '—' }}</td>
               <td>
+                <span v-if="c.catalogo_nombre" class="badge badge-amber text-xs">
+                  <i class="fa-solid fa-tag mr-1" />{{ c.catalogo_nombre }}
+                </span>
+                <span v-else class="text-stone-600 text-xs">—</span>
+              </td>
+              <td>
                 <span class="badge" :class="esCredito(c) ? 'badge-blue' : 'badge-stone'">
                   <i :class="esCredito(c) ? 'fa-solid fa-credit-card' : 'fa-solid fa-money-bill-wave'" />
                   {{ esCredito(c) ? 'crédito' : 'contado' }}
@@ -153,7 +168,7 @@ const esCredito = (c) => c.limite_credito > 0
               </td>
             </tr>
             <tr v-if="!clientes.length">
-              <td colspan="6" class="py-16 text-center text-stone-500">
+              <td colspan="7" class="py-16 text-center text-stone-500">
                 <i class="fa-solid fa-building text-4xl mb-3 block opacity-20" />
                 No se encontraron clientes
               </td>
@@ -230,6 +245,15 @@ const esCredito = (c) => c.limite_credito > 0
               <div class="col-span-2">
                 <label class="label">Dirección</label>
                 <input v-model="form.direccion" type="text" class="input" />
+              </div>
+
+              <div class="col-span-2">
+                <label class="label">Catálogo de precios</label>
+                <select v-model="form.catalogo_precio_id" class="input">
+                  <option :value="null">— Sin catálogo asignado —</option>
+                  <option v-for="cat in catalogos" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+                </select>
+                <p class="text-[11px] text-stone-500 mt-1">Define qué tarifa de precios aplica al generar órdenes para este cliente.</p>
               </div>
 
               <div class="col-span-2 pt-1 border-t border-stone-800">
