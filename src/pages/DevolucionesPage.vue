@@ -92,6 +92,47 @@ async function guardarDevolucion() {
   } finally { saving.value = false }
 }
 
+// ── Dummy data ────────────────────────────────────────────────────────────────
+const DUMMY = [
+  {
+    id: 1001, orden_id: 38, tipo: 'devolucion', estado: 'pendiente', motivo: 'Producto en mal estado',
+    total: 52.00, creado_por: 'Carlos López', aprobado_por: null, aprobado_at: null,
+    created_at: '2026-06-15T10:22:00',
+    cliente: { id: 3, nombres: 'El Barón Restaurante', nom_comercial: 'El Barón' },
+    items: [
+      { id: 1, producto_id: 2, nombre_producto: 'Cerveza Amber Ale 330ml', cantidad: 12, precio_unitario: 2.50, exento: false, subtotal: 30.00, iva: 3.90, total: 33.90, motivo_item: 'Botellas rotas en envío' },
+      { id: 2, producto_id: 5, nombre_producto: 'Cerveza Stout 500ml', cantidad: 4, precio_unitario: 3.50, exento: false, subtotal: 14.00, iva: 1.82, total: 15.82, motivo_item: '' },
+    ],
+  },
+  {
+    id: 1002, orden_id: 41, tipo: 'cambio', estado: 'pendiente', motivo: 'Error en pedido',
+    total: 28.25, creado_por: 'Ana García', aprobado_por: null, aprobado_at: null,
+    created_at: '2026-06-16T08:45:00',
+    cliente: { id: 5, nombres: 'Restaurante La Cúpula', nom_comercial: 'La Cúpula' },
+    items: [
+      { id: 3, producto_id: 8, nombre_producto: 'IPA 330ml', cantidad: 10, precio_unitario: 2.50, exento: false, subtotal: 25.00, iva: 3.25, total: 28.25, motivo_item: 'Se entregó IPA en lugar de Lager solicitada' },
+    ],
+  },
+  {
+    id: 1003, orden_id: 29, tipo: 'devolucion', estado: 'aprobada', motivo: 'Producto vencido',
+    total: 113.00, creado_por: 'Carlos López', aprobado_por: 'rodrigo', aprobado_at: '2026-06-10T14:30:00',
+    created_at: '2026-06-09T16:00:00',
+    cliente: { id: 2, nombres: 'Quality Restaurant Group', nom_comercial: 'Quality' },
+    items: [
+      { id: 4, producto_id: 3, nombre_producto: 'Barril 50L Amber Ale', cantidad: 1, precio_unitario: 100.00, exento: false, subtotal: 100.00, iva: 13.00, total: 113.00, motivo_item: 'Fecha de vencimiento ya expirada al momento de entrega' },
+    ],
+  },
+  {
+    id: 1004, orden_id: 35, tipo: 'cambio', estado: 'rechazada', motivo: 'Daño en transporte',
+    total: 45.20, creado_por: 'Ana García', aprobado_por: 'rodrigo', aprobado_at: '2026-06-12T09:15:00',
+    created_at: '2026-06-11T11:30:00',
+    cliente: { id: 7, nombres: 'Pedidos Ya El Salvador', nom_comercial: 'Pedidos Ya' },
+    items: [
+      { id: 5, producto_id: 4, nombre_producto: 'Cerveza Lager 330ml', cantidad: 16, precio_unitario: 2.50, exento: false, subtotal: 40.00, iva: 5.20, total: 45.20, motivo_item: '' },
+    ],
+  },
+]
+
 // ── Listado ──────────────────────────────────────────────────────────────────
 async function cargar() {
   loading.value = true
@@ -99,8 +140,21 @@ async function cargar() {
     const params = {}
     if (filtroEstado.value) params.estado = filtroEstado.value
     const { data } = await api.get('devoluciones', { params })
-    devoluciones.value = data.data || data
-  } catch (e) { console.error(e) }
+    const reales = data.data || data
+    if (reales.length) {
+      devoluciones.value = reales
+    } else {
+      // Filtrar dummy según filtro activo
+      devoluciones.value = filtroEstado.value
+        ? DUMMY.filter(d => d.estado === filtroEstado.value)
+        : DUMMY
+    }
+  } catch (e) {
+    // Si la API falla, mostrar dummy igualmente
+    devoluciones.value = filtroEstado.value
+      ? DUMMY.filter(d => d.estado === filtroEstado.value)
+      : DUMMY
+  }
   finally { loading.value = false }
 }
 
@@ -113,7 +167,12 @@ async function verDetalle(d) {
   try {
     const { data } = await api.get(`devoluciones/${d.id}`)
     detalleData.value = data
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    // Si es un registro dummy (id >= 1000), servir desde DUMMY local
+    const dummy = DUMMY.find(x => x.id === d.id)
+    if (dummy) detalleData.value = { ...dummy, orden: dummy.orden_id ? { id: dummy.orden_id, total: dummy.total, estado: 'completada' } : null }
+    else console.error(e)
+  }
   finally { loadingDetalle.value = false }
 }
 
