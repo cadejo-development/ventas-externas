@@ -31,6 +31,7 @@
         <SidebarNavItem to="/clientes"  icon="fa-solid fa-building">Clientes</SidebarNavItem>
         <SidebarNavItem to="/productos" icon="fa-solid fa-cubes">Productos</SidebarNavItem>
         <SidebarNavItem to="/ordenes"   icon="fa-solid fa-file-invoice-dollar">Órdenes</SidebarNavItem>
+        <SidebarNavItem to="/devoluciones" icon="fa-solid fa-rotate-left">Devoluciones</SidebarNavItem>
         <SidebarNavItem v-if="session?.rol === 'jefe_ventas'" to="/aprobaciones" icon="fa-solid fa-shield-check">
           Aprobaciones
           <template v-if="pendientes > 0">
@@ -90,7 +91,8 @@
           <SidebarNavItem to="/dashboard" icon="fa-solid fa-chart-pie" @click="mobileOpen=false">Inicio</SidebarNavItem>
           <SidebarNavItem to="/clientes"  icon="fa-solid fa-building"  @click="mobileOpen=false">Clientes</SidebarNavItem>
           <SidebarNavItem to="/productos" icon="fa-solid fa-cubes"     @click="mobileOpen=false">Productos</SidebarNavItem>
-          <SidebarNavItem to="/ordenes"   icon="fa-solid fa-file-invoice-dollar" @click="mobileOpen=false">Órdenes</SidebarNavItem>
+          <SidebarNavItem to="/ordenes"       icon="fa-solid fa-file-invoice-dollar" @click="mobileOpen=false">Órdenes</SidebarNavItem>
+          <SidebarNavItem to="/devoluciones" icon="fa-solid fa-rotate-left"         @click="mobileOpen=false">Devoluciones</SidebarNavItem>
           <SidebarNavItem v-if="session?.rol === 'jefe_ventas'" to="/aprobaciones" icon="fa-solid fa-shield-check" @click="mobileOpen=false">Aprobaciones</SidebarNavItem>
           <SidebarNavItem v-if="session?.rol === 'jefe_ventas'" to="/mantenimiento" icon="fa-solid fa-sliders" @click="mobileOpen=false">Mantenimiento</SidebarNavItem>
         </nav>

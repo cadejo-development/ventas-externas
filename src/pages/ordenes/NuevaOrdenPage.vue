@@ -15,6 +15,14 @@ const catalogoLineas  = ref({})   // { [catalogo_id]: { [producto_id]: { precio_
 const loading         = ref(true)
 const saving          = ref(false)
 
+const tipoOrden  = ref('normal')   // 'normal' | 'autoconsumo'
+const subCeco    = ref('')
+
+const CECOS = ['Mercadeo', 'Operaciones', 'Administración', 'Producción', 'Ventas', 'Gerencia']
+
+const esAutoconsumo = computed(() => tipoOrden.value === 'autoconsumo')
+const cadejoCliente = computed(() => allClientes.value.find(c => c.nombres === 'Cadejo Brewing Company'))
+
 const todayISO = new Date().toISOString().slice(0, 10)
 
 const productosPorBodega = computed(() => {
@@ -58,10 +66,30 @@ async function seleccionarCliente(c) {
 }
 
 function limpiarCliente() {
+  if (esAutoconsumo.value) return   // autoconsumo siempre = Cadejo
   form.value.cliente_id       = null
   form.value.tipo_venta       = 'contado'
   form.value.plazo_solicitado = 0
   clienteQuery.value = ''
+  showDropdown.value = false
+}
+
+function toggleAutoconsumo(val) {
+  tipoOrden.value = val
+  if (val === 'autoconsumo') {
+    const c = cadejoCliente.value
+    if (c) {
+      form.value.cliente_id = c.id
+      clienteQuery.value    = c.nombres
+    }
+    form.value.tipo_venta = 'contado'
+    // Recalcular precios de items existentes al costo
+    form.value.items.forEach((item, idx) => onProductoChange(idx))
+  } else {
+    subCeco.value = ''
+    form.value.cliente_id = null
+    clienteQuery.value    = ''
+  }
   showDropdown.value = false
 }
 
@@ -125,9 +153,13 @@ function onProductoChange(idx) {
   const lineas = catId ? (catalogoLineas.value[catId] ?? {}) : {}
   const lineaPrecio = lineas[prod.id]
 
-  if (lineaPrecio) {
+  if (esAutoconsumo.value) {
+    item.precio_unitario  = prod.costo || 0
+    item.precio_catalogo  = null
+    item.precio_modificado = false
+  } else if (lineaPrecio) {
     item.precio_unitario  = lineaPrecio.precio_sin_iva
-    item.precio_catalogo  = lineaPrecio.precio_sin_iva   // referencia original
+    item.precio_catalogo  = lineaPrecio.precio_sin_iva
     item.precio_modificado = false
   } else {
     item.precio_unitario  = prod.precio || 0
@@ -151,10 +183,17 @@ async function guardar() {
   if (!form.value.cliente_id) { toast('Selecciona un cliente', 'error'); return }
   if (!form.value.items.length) { toast('Agrega al menos un producto', 'error'); return }
 
+  if (esAutoconsumo.value && !subCeco.value) {
+    toast('Selecciona el centro de costo para el autoconsumo', 'error'); return
+  }
+
   saving.value = true
   try {
     await api.post('ordenes', {
       ...form.value,
+      tipo_orden:   tipoOrden.value,
+      sub_ceco:     esAutoconsumo.value ? subCeco.value : null,
+      tipo_aprobacion: necesitaAprobacion.value,
       items: form.value.items.map(i => ({
         producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio_unitario,
       }))
@@ -210,6 +249,34 @@ onMounted(async () => {
 
     <form v-else @submit.prevent="guardar" class="space-y-4">
 
+      <!-- ── Tipo de Orden ──────────────────────────────────────────────────── -->
+      <div class="flex gap-2">
+        <button type="button" @click="toggleAutoconsumo('normal')"
+          class="flex-1 py-3 rounded-xl text-sm font-semibold border transition-all"
+          :class="tipoOrden === 'normal'
+            ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+            : 'bg-stone-900 border-stone-700 text-stone-400 hover:border-stone-600'">
+          <i class="fa-solid fa-cart-shopping mr-2" />Orden Normal
+        </button>
+        <button type="button" @click="toggleAutoconsumo('autoconsumo')"
+          class="flex-1 py-3 rounded-xl text-sm font-semibold border transition-all"
+          :class="tipoOrden === 'autoconsumo'
+            ? 'bg-orange-500/15 border-orange-500/40 text-orange-300'
+            : 'bg-stone-900 border-stone-700 text-stone-400 hover:border-stone-600'">
+          <i class="fa-solid fa-building-user mr-2" />Autoconsumo Interno
+        </button>
+      </div>
+
+      <!-- Autoconsumo info banner -->
+      <div v-if="esAutoconsumo"
+        class="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-900/20 border border-orange-700/30 animate-fade-in">
+        <i class="fa-solid fa-circle-info text-orange-400 mt-0.5" />
+        <div class="text-xs text-orange-300 space-y-0.5">
+          <p class="font-semibold">Autoconsumo — uso interno de Cadejo</p>
+          <p class="text-orange-400/80">Los productos se cargarán al precio de costo. Cliente fijo: Cadejo Brewing Company.</p>
+        </div>
+      </div>
+
       <!-- ── Encabezado ─────────────────────────────────────────────────────── -->
       <div class="card">
         <div class="section-title mb-4"><i class="fa-solid fa-file-lines text-amber-500/60" />Encabezado</div>
@@ -224,11 +291,15 @@ onMounted(async () => {
                 <input
                   v-model="clienteQuery"
                   @input="onClienteInput"
-                  @focus="showDropdown = clienteQuery.length > 0"
+                  @focus="showDropdown = !esAutoconsumo && clienteQuery.length > 0"
+                  :readonly="esAutoconsumo"
                   type="text"
                   placeholder="Buscar por nombre, NIT..."
                   class="input pl-9 pr-9"
-                  :class="form.cliente_id ? 'border-amber-500/40 bg-amber-900/10' : ''"
+                  :class="[
+                    form.cliente_id ? 'border-amber-500/40 bg-amber-900/10' : '',
+                    esAutoconsumo ? 'opacity-60 cursor-not-allowed' : ''
+                  ]"
                 />
                 <button v-if="form.cliente_id" type="button" @click="limpiarCliente"
                   class="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500 hover:text-red-400 transition-colors">
@@ -284,20 +355,33 @@ onMounted(async () => {
             </div>
           </div>
 
+          <!-- Sub-CECO (solo autoconsumo) -->
+          <div v-if="esAutoconsumo">
+            <label class="label">Centro de Costo (CECO) *</label>
+            <select v-model="subCeco" class="select" :class="!subCeco ? 'border-orange-700/40' : ''">
+              <option value="">— Selecciona un CECO —</option>
+              <option v-for="c in CECOS" :key="c" :value="c">{{ c }}</option>
+            </select>
+            <p v-if="!subCeco" class="text-xs text-orange-400/80 mt-1">
+              <i class="fa-solid fa-triangle-exclamation mr-1" />Requerido para autoconsumo
+            </p>
+          </div>
+
           <!-- Tipo de venta + Plazo/Notas -->
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="label">Tipo de venta</label>
               <div class="flex gap-2">
                 <button type="button" @click="form.tipo_venta = 'contado'"
-                  class="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all"
+                  :disabled="esAutoconsumo"
+                  class="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="form.tipo_venta === 'contado'
                     ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                     : 'bg-stone-900 border-stone-700 text-stone-400 hover:border-stone-600'">
                   <i class="fa-solid fa-money-bill-wave mr-1.5" />Contado
                 </button>
                 <button type="button" @click="form.tipo_venta = 'credito'"
-                  :disabled="!clienteSeleccionado"
+                  :disabled="!clienteSeleccionado || esAutoconsumo"
                   class="flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   :class="form.tipo_venta === 'credito'
                     ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
@@ -427,7 +511,8 @@ onMounted(async () => {
                   class="input text-sm pl-6 text-right"
                   :class="item.precio_modificado ? 'border-amber-500/60 bg-amber-900/10' : ''" />
               </div>
-              <p v-if="item.precio_catalogo !== null && item.precio_modificado" class="text-[10px] text-stone-500 mt-0.5 text-right">
+              <p v-if="esAutoconsumo" class="text-[10px] text-orange-400/70 mt-0.5 text-right">Al costo</p>
+              <p v-else-if="item.precio_catalogo !== null && item.precio_modificado" class="text-[10px] text-stone-500 mt-0.5 text-right">
                 Catálogo: ${{ item.precio_catalogo?.toFixed(2) }}
               </p>
             </div>

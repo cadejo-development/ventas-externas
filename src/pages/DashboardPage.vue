@@ -30,60 +30,51 @@ const TABLA_MARGENES = [
   { codigo:'CB-WHITE-330', nombre:'Cerveza White Ale 330ml',      precio_con_iva: 2.50, precio_sin_iva: 2.21, costo: 0.82 },
 ]
 
-// --- Gráficas (datos dummy — prototipo) ---
-const VENTAS_MESES = [
-  { mes: 'Ene', total: 1850 },
-  { mes: 'Feb', total: 2200 },
-  { mes: 'Mar', total: 2800 },
-  { mes: 'Abr', total: 2100 },
-  { mes: 'May', total: 3200 },
-  { mes: 'Jun', total: 2699 },
-]
-const META = 2500
+// ── ApexCharts — configuración base dark (igual que hr-rrhh) ─────────────
+const apexBase = {
+  chart:   { background: 'transparent', toolbar: { show: false }, fontFamily: 'inherit', animations: { enabled: true, speed: 600, easing: 'easeinout' } },
+  theme:   { mode: 'dark' },
+  grid:    { borderColor: '#292524', strokeDashArray: 3, xaxis: { lines: { show: false } } },
+  tooltip: { theme: 'dark' },
+}
 
-const barChart = computed(() => {
-  const L=50, B=168, W=540, H=150, MAX=3600
-  const sc = H / MAX
-  const slotW = W / VENTAS_MESES.length
-  const bW = 48
-  return {
-    bars: VENTAS_MESES.map((d, i) => ({
-      x:    L + i * slotW + (slotW - bW) / 2,
-      y:    B - d.total * sc,
-      h:    d.total * sc,
-      w:    bW,
-      lx:   L + i * slotW + slotW / 2,
-      mes:  d.mes,
-      total: d.total,
-      over: d.total >= META,
-    })),
-    gridlines: [1000, 2000, 3000].map(v => ({ y: B - v * sc, label: `$${v/1000}k` })),
-    metaY: B - META * sc,
-    x0: L, x1: L + W, yB: B,
-  }
-})
+// Gráfica barras: ventas mensuales + anotación de meta (dummy — prototipo)
+const barSeries = [{ name: 'Ventas', data: [1850, 2200, 2800, 2100, 3200, 2699] }]
+const barOpts = computed(() => ({
+  ...apexBase,
+  chart: { ...apexBase.chart, type: 'bar' },
+  plotOptions: { bar: { borderRadius: 4, columnWidth: '58%', dataLabels: { position: 'top' } } },
+  colors: ['#d97706'],
+  fill: { type: 'gradient', gradient: { type: 'vertical', gradientToColors: ['#f59e0b'], opacityFrom: 0.92, opacityTo: 0.72 } },
+  dataLabels: { enabled: true, formatter: v => `$${(v/1000).toFixed(1)}k`, style: { fontSize: '10px', colors: ['#fbbf24'] }, offsetY: -18 },
+  xaxis: {
+    categories: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'],
+    labels: { style: { colors: '#78716c', fontSize: '11px' } },
+    axisBorder: { color: '#292524' }, axisTicks: { color: '#292524' },
+  },
+  yaxis: { labels: { style: { colors: '#78716c', fontSize: '10px' }, formatter: v => `$${(v/1000).toFixed(0)}k` }, min: 0, max: 3600 },
+  annotations: {
+    yaxis: [{
+      y: 2500, borderColor: '#10b981', borderWidth: 1.5, strokeDashArray: 5,
+      label: { text: 'Meta $2,500', borderColor: '#10b981', borderWidth: 0, style: { color: '#10b981', background: 'transparent', fontSize: '10px' }, position: 'right', offsetX: -12 }
+    }]
+  },
+  tooltip: { theme: 'dark', y: { formatter: v => new Intl.NumberFormat('es-SV',{style:'currency',currency:'USD'}).format(v) } },
+}))
 
-const DISTRIBUCION = [
-  { label: 'Barriles',      pct: 38, color: '#f59e0b' },
-  { label: 'Botella 330ml', pct: 35, color: '#ea580c' },
-  { label: 'Botella 600ml', pct: 18, color: '#eab308' },
-  { label: 'Merch & Otros', pct:  9, color: '#78716c' },
-]
-
-const donutSegs = computed(() => {
-  const r = 68, circ = 2 * Math.PI * r
-  let cumPct = 0
-  return DISTRIBUCION.map(d => {
-    const len = (d.pct / 100) * circ
-    const seg = {
-      ...d,
-      dasharray:  `${len.toFixed(1)} ${(circ - len).toFixed(1)}`,
-      dashoffset: (circ * (1 - cumPct / 100)).toFixed(1),
-    }
-    cumPct += d.pct
-    return seg
-  })
-})
+// Gráfica donut: distribución por línea de producto (dummy — prototipo)
+const donutSeries = [38, 35, 18, 9]
+const donutOpts = {
+  ...apexBase,
+  chart: { ...apexBase.chart, type: 'donut' },
+  colors: ['#f59e0b', '#ea580c', '#eab308', '#78716c'],
+  labels: ['Barriles', 'Botella 330ml', 'Botella 600ml', 'Merch & Otros'],
+  legend: { show: false },
+  dataLabels: { enabled: false },
+  plotOptions: { pie: { donut: { size: '70%', labels: { show: true, total: { show: true, label: 'Líneas', fontSize: '11px', color: '#78716c', formatter: () => '4 líneas' } } } } },
+  stroke: { width: 2, colors: ['#1c1917'] },
+  tooltip: { theme: 'dark', y: { formatter: v => `${v}%` } },
+}
 </script>
 
 <template>
@@ -167,42 +158,12 @@ const donutSegs = computed(() => {
               </div>
               <h3 class="font-semibold text-neutral-100 text-sm">Ventas mensuales 2026</h3>
             </div>
-            <div class="flex items-center gap-4 text-[11px] text-stone-500">
-              <span class="flex items-center gap-1.5">
-                <span class="inline-block w-3 h-2.5 rounded-sm bg-amber-700/80" />Ventas
-              </span>
-              <span class="flex items-center gap-1.5">
-                <span class="inline-block w-4 border-t-2 border-dashed border-emerald-500/80" />Meta $2,500
-              </span>
+            <div class="flex items-center gap-3 text-[11px] text-stone-500">
+              <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-2.5 rounded-sm bg-amber-600/80" />Ventas</span>
+              <span class="flex items-center gap-1.5"><span class="inline-block w-4 border-t-2 border-dashed border-emerald-500/80" />Meta $2,500</span>
             </div>
           </div>
-          <svg viewBox="0 0 640 192" class="w-full overflow-visible">
-            <!-- Gridlines y etiquetas Y -->
-            <g v-for="g in barChart.gridlines" :key="g.label">
-              <line :x1="barChart.x0" :y1="g.y" :x2="barChart.x1" :y2="g.y"
-                    stroke="#292524" stroke-width="1" />
-              <text :x="barChart.x0 - 6" :y="g.y + 3.5" text-anchor="end"
-                    fill="#57534e" font-size="9">{{ g.label }}</text>
-            </g>
-            <!-- Eje base -->
-            <line :x1="barChart.x0" :y1="barChart.yB" :x2="barChart.x1" :y2="barChart.yB"
-                  stroke="#292524" stroke-width="1" />
-            <!-- Barras -->
-            <g v-for="b in barChart.bars" :key="b.mes">
-              <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="3"
-                    :fill="b.over ? '#d97706' : '#92400e'" opacity="0.9" />
-              <text :x="b.lx" :y="b.y - 5" text-anchor="middle"
-                    :fill="b.over ? '#fbbf24' : '#a16207'" font-size="8.5" font-weight="600">
-                ${{ (b.total / 1000).toFixed(1) }}k
-              </text>
-              <text :x="b.lx" :y="barChart.yB + 14" text-anchor="middle"
-                    fill="#78716c" font-size="9">{{ b.mes }}</text>
-            </g>
-            <!-- Línea meta -->
-            <line :x1="barChart.x0" :y1="barChart.metaY" :x2="barChart.x1" :y2="barChart.metaY"
-                  stroke="#10b981" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.8" />
-            <text :x="barChart.x1 + 4" :y="barChart.metaY + 4" fill="#10b981" font-size="8.5">Meta</text>
-          </svg>
+          <apexchart type="bar" height="220" width="100%" :options="barOpts" :series="barSeries" />
         </div>
 
         <!-- Distribución por producto (donut) -->
@@ -213,21 +174,15 @@ const donutSegs = computed(() => {
             </div>
             <h3 class="font-semibold text-neutral-100 text-sm">Por línea de producto</h3>
           </div>
-          <div class="flex flex-col items-center gap-5 flex-1 justify-center">
-            <svg viewBox="0 0 200 200" class="w-36 h-36 -rotate-90">
-              <circle v-for="s in donutSegs" :key="s.label"
-                cx="100" cy="100" r="68" fill="none"
-                :stroke="s.color" stroke-width="32"
-                :stroke-dasharray="s.dasharray"
-                :stroke-dashoffset="s.dashoffset" />
-            </svg>
-            <div class="w-full space-y-2">
-              <div v-for="s in donutSegs" :key="s.label" class="flex items-center justify-between gap-2">
+          <div class="flex-1 flex flex-col">
+            <apexchart type="donut" height="170" width="100%" :options="donutOpts" :series="donutSeries" />
+            <div class="space-y-1.5 mt-1">
+              <div v-for="(pct, i) in donutSeries" :key="i" class="flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :style="`background:${s.color}`" />
-                  <span class="text-xs text-stone-300 truncate">{{ s.label }}</span>
+                  <span class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :style="`background:${donutOpts.colors[i]}`" />
+                  <span class="text-xs text-stone-300 truncate">{{ donutOpts.labels[i] }}</span>
                 </div>
-                <span class="text-xs font-semibold tabular-nums" :style="`color:${s.color}`">{{ s.pct }}%</span>
+                <span class="text-xs font-semibold tabular-nums" :style="`color:${donutOpts.colors[i]}`">{{ pct }}%</span>
               </div>
             </div>
           </div>

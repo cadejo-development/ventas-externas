@@ -14,6 +14,7 @@ const routes = [
       { path: 'ordenes',      name: 'ordenes',      meta: { title: 'Órdenes' },       component: () => import('../pages/ordenes/OrdenesPage.vue') },
       { path: 'ordenes/nueva',name: 'ordenes-nueva',meta: { title: 'Nueva Orden' },   component: () => import('../pages/ordenes/NuevaOrdenPage.vue') },
       { path: 'aprobaciones',  name: 'aprobaciones',  meta: { title: 'Aprobaciones' },  component: () => import('../pages/AprobacionesPage.vue') },
+      { path: 'devoluciones',  name: 'devoluciones',  meta: { title: 'Devoluciones' },  component: () => import('../pages/DevolucionesPage.vue') },
       { path: 'mantenimiento', name: 'mantenimiento', meta: { title: 'Mantenimiento' }, component: () => import('../pages/MantenimientoPage.vue') },
     ],
   },
