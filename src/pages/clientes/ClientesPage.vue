@@ -55,11 +55,21 @@ function abrirEditar(c) { editing.value = c.id; form.value = { ...c }; showModal
 async function guardar() {
   saving.value = true
   try {
-    if (editing.value) await api.patch(`clientes/${editing.value}`, form.value)
-    else await api.post('clientes', form.value)
-    showModal.value = false
-    toast(editing.value ? 'Cliente actualizado' : 'Cliente creado')
-    await cargar()
+    if (editing.value) {
+      const { data, status } = await api.patch(`clientes/${editing.value}`, form.value)
+      showModal.value = false
+      if (status === 202) {
+        toast('Cambios enviados a aprobación del jefe de ventas', 'warning')
+      } else {
+        toast('Cliente actualizado')
+        await cargar()
+      }
+    } else {
+      await api.post('clientes', form.value)
+      showModal.value = false
+      toast('Cliente creado')
+      await cargar()
+    }
   } catch (e) { toast(e.response?.data?.message || 'Error al guardar', 'error') }
   finally { saving.value = false }
 }

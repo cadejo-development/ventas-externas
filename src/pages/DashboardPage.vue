@@ -13,13 +13,22 @@ onMounted(async () => {
 
 function fmt(n) { return new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(n || 0) }
 
-const estadoBadge = {
-  aprobada:            'badge-green',
-  pendiente_aprobacion:'badge-amber',
-  borrador:            'badge-stone',
-  rechazada:           'badge-red',
-  completada:          'badge-blue',
+function estadoBadge(e) {
+  return { aprobada:'badge-green', pendiente_aprobacion:'badge-amber', borrador:'badge-stone', rechazada:'badge-red', completada:'badge-blue' }[e] || 'badge-stone'
 }
+function estadoLabel(e) {
+  return { aprobada:'aprobada', pendiente_aprobacion:'pend. aprobación', borrador:'borrador', rechazada:'rechazada', completada:'finalizada' }[e] || e
+}
+
+// Tabla de márgenes (dummy — pendiente sync costo desde Brilo)
+const TABLA_MARGENES = [
+  { codigo:'CB-CRAFT-KEG', nombre:'Barril 20L Cerveza Artesanal', precio_con_iva:95.00, precio_sin_iva:84.07, costo:42.00 },
+  { codigo:'CB-AMBER-330', nombre:'Cerveza Amber Ale 330ml',      precio_con_iva: 2.50, precio_sin_iva: 2.21, costo: 0.85 },
+  { codigo:'CB-AMBER-600', nombre:'Cerveza Amber Ale 600ml',      precio_con_iva: 4.25, precio_sin_iva: 3.76, costo: 1.40 },
+  { codigo:'CB-DARK-330',  nombre:'Cerveza Dark Ale 330ml',       precio_con_iva: 2.75, precio_sin_iva: 2.43, costo: 0.90 },
+  { codigo:'CB-IPA-330',   nombre:'Cerveza IPA 330ml',            precio_con_iva: 3.00, precio_sin_iva: 2.65, costo: 0.95 },
+  { codigo:'CB-WHITE-330', nombre:'Cerveza White Ale 330ml',      precio_con_iva: 2.50, precio_sin_iva: 2.21, costo: 0.82 },
+]
 
 // --- Gráficas (datos dummy — prototipo) ---
 const VENTAS_MESES = [
@@ -225,8 +234,8 @@ const donutSegs = computed(() => {
         </div>
       </div>
 
-      <!-- Grids inferiores -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- Top productos + Top clientes + Últimas órdenes -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
 
         <!-- Top productos -->
         <div class="card">
@@ -236,22 +245,49 @@ const donutSegs = computed(() => {
             </div>
             <h3 class="font-semibold text-neutral-100 text-sm">Top productos del mes</h3>
           </div>
-          <div v-if="!stats.ventas_por_producto.length"
-            class="text-center py-8 text-stone-600">
-            <i class="fa-solid fa-box-open text-2xl mb-2 block opacity-30" />
-            Sin datos aún
+          <div v-if="!stats.ventas_por_producto.length" class="text-center py-8 text-stone-600">
+            <i class="fa-solid fa-box-open text-2xl mb-2 block opacity-30" />Sin datos aún
           </div>
           <div v-else class="space-y-2.5">
-            <div v-for="(p, i) in stats.ventas_por_producto" :key="p.nombre_producto"
-              class="flex items-center gap-3">
+            <div v-for="(p, i) in stats.ventas_por_producto" :key="p.nombre_producto" class="flex items-center gap-3">
               <span class="text-xs text-stone-700 w-4 text-right tabular-nums flex-shrink-0">{{ i+1 }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm text-stone-300 truncate">{{ p.nombre_producto }}</div>
                 <div class="h-1 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
-                  <div class="h-full bg-amber-600/60 rounded-full" :style="`width:${Math.round((p.total / stats.ventas_por_producto[0].total) * 100)}%`" />
+                  <div class="h-full bg-amber-600/60 rounded-full" :style="`width:${Math.round((p.total/stats.ventas_por_producto[0].total)*100)}%`" />
                 </div>
               </div>
               <span class="text-xs font-semibold text-amber-400 tabular-nums flex-shrink-0">{{ fmt(p.total) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top clientes -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-blue-900/30 flex items-center justify-center">
+                <i class="fa-solid fa-trophy text-blue-400 text-xs" />
+              </div>
+              <h3 class="font-semibold text-neutral-100 text-sm">Top clientes del mes</h3>
+            </div>
+            <span v-if="stats.clientes_nuevos" class="badge badge-green text-[10px]">
+              <i class="fa-solid fa-user-plus" />+{{ stats.clientes_nuevos }} nuevos
+            </span>
+          </div>
+          <div v-if="!stats.top_clientes?.length" class="text-center py-8 text-stone-600">
+            <i class="fa-solid fa-users text-2xl mb-2 block opacity-30" />Sin datos aún
+          </div>
+          <div v-else class="space-y-2.5">
+            <div v-for="(c, i) in stats.top_clientes" :key="c.id" class="flex items-center gap-3">
+              <span class="text-xs text-stone-700 w-4 text-right tabular-nums flex-shrink-0">{{ i+1 }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm text-stone-300 truncate">{{ c.nom_comercial || c.nombres }}</div>
+                <div class="h-1 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
+                  <div class="h-full bg-blue-600/50 rounded-full" :style="`width:${Math.round((c.total/stats.top_clientes[0].total)*100)}%`" />
+                </div>
+              </div>
+              <span class="text-xs font-semibold text-blue-300 tabular-nums flex-shrink-0">{{ fmt(c.total) }}</span>
             </div>
           </div>
         </div>
@@ -269,10 +305,8 @@ const donutSegs = computed(() => {
               Ver todas <i class="fa-solid fa-arrow-right ml-1 text-[10px]" />
             </RouterLink>
           </div>
-          <div v-if="!stats.ultimas_ordenes.length"
-            class="text-center py-8 text-stone-600">
-            <i class="fa-solid fa-file-invoice text-2xl mb-2 block opacity-30" />
-            Sin órdenes aún
+          <div v-if="!stats.ultimas_ordenes.length" class="text-center py-8 text-stone-600">
+            <i class="fa-solid fa-file-invoice text-2xl mb-2 block opacity-30" />Sin órdenes aún
           </div>
           <div v-else class="space-y-2">
             <div v-for="o in stats.ultimas_ordenes" :key="o.id"
@@ -286,12 +320,57 @@ const donutSegs = computed(() => {
               </div>
               <div class="flex-shrink-0 text-right">
                 <div class="text-sm font-bold text-amber-400 tabular-nums">{{ fmt(o.total) }}</div>
-                <span class="badge text-[10px]" :class="estadoBadge[o.estado] || 'badge-stone'">
-                  {{ o.estado.replace('_',' ') }}
-                </span>
+                <span class="badge text-[10px]" :class="estadoBadge(o.estado)">{{ estadoLabel(o.estado) }}</span>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Tabla de márgenes por producto -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-stone-800 flex items-center justify-center">
+              <i class="fa-solid fa-table text-stone-400 text-xs" />
+            </div>
+            <h3 class="font-semibold text-neutral-100 text-sm">Márgenes por producto</h3>
+          </div>
+          <span class="badge badge-stone text-[10px]"><i class="fa-solid fa-clock-rotate-left mr-1" />Costos pendiente sync Brilo</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-stone-800 text-stone-500">
+                <th class="px-3 py-2 text-left font-medium">Producto</th>
+                <th class="px-3 py-2 text-right font-medium">P. Venta c/IVA</th>
+                <th class="px-3 py-2 text-right font-medium">P. Venta s/IVA</th>
+                <th class="px-3 py-2 text-right font-medium">Costo</th>
+                <th class="px-3 py-2 text-right font-medium">Margen</th>
+                <th class="px-3 py-2 text-right font-medium">% Costo</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-800/50">
+              <tr v-for="p in TABLA_MARGENES" :key="p.codigo" class="hover:bg-stone-800/20 transition-colors">
+                <td class="px-3 py-2.5">
+                  <div class="font-medium text-stone-200">{{ p.nombre }}</div>
+                  <div class="text-stone-600 font-mono text-[10px]">{{ p.codigo }}</div>
+                </td>
+                <td class="px-3 py-2.5 text-right tabular-nums text-emerald-400 font-semibold">${{ p.precio_con_iva.toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-right tabular-nums text-stone-400">${{ p.precio_sin_iva.toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-right tabular-nums text-stone-400">${{ p.costo.toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-right tabular-nums text-amber-400 font-semibold">
+                  ${{ (p.precio_sin_iva - p.costo).toFixed(2) }}
+                </td>
+                <td class="px-3 py-2.5 text-right">
+                  <span class="tabular-nums font-semibold"
+                    :class="(p.costo/p.precio_sin_iva) < 0.45 ? 'text-emerald-400' : (p.costo/p.precio_sin_iva) < 0.6 ? 'text-amber-400' : 'text-red-400'">
+                    {{ Math.round((p.costo / p.precio_sin_iva) * 100) }}%
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </template>

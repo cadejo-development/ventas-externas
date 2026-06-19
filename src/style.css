@@ -66,6 +66,7 @@
   .badge-blue   { @apply bg-blue-900/50 text-blue-300 border border-blue-800/50; }
   .badge-stone  { @apply bg-stone-800 text-stone-300 border border-stone-700; }
   .badge-purple { @apply bg-purple-900/50 text-purple-300 border border-purple-800/50; }
+  .badge-orange { @apply bg-orange-900/50 text-orange-300 border border-orange-800/50; }
 
   /* ── Tables ── */
   .table-wrapper {

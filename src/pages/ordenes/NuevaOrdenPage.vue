@@ -97,7 +97,8 @@ const excedePlazo   = computed(() => esCredito.value && plazoMaximo.value > 0 &&
 // null = auto-aprobada | 'exceso_limite' | 'cambio_credito' | 'cambio_precio'
 const necesitaAprobacion = computed(() => {
   if (!clienteSeleccionado.value) return null
-  if (hayPreciosModificados.value) return 'cambio_precio'
+  // Jefe puede modificar precios sin aprobación
+  if (session?.rol !== 'jefe_ventas' && hayPreciosModificados.value) return 'cambio_precio'
   if (esCredito.value) {
     if (!clienteTieneCredito.value) return 'cambio_credito'
     if (excedeLimite.value)  return 'exceso_limite'

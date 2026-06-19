@@ -22,10 +22,16 @@ onMounted(cargar)
 
 function tipoBadge(tipo) {
   return {
-    exceso_limite:     ['badge-amber', 'Exceso de límite'],
-    cambio_credito:    ['badge-blue',  'Cambio a crédito'],
-    modificacion_orden:['badge-stone', 'Modificación'],
+    exceso_limite:     ['badge-amber',  'Exceso de límite'],
+    cambio_credito:    ['badge-blue',   'Cambio a crédito'],
+    modificacion_orden:['badge-stone',  'Modificación'],
+    cambio_precio:     ['badge-orange', 'Cambio de precio'],
+    cambio_cliente:    ['badge-purple', 'Datos de cliente'],
   }[tipo] || ['badge-stone', tipo]
+}
+
+function parseCambioCliente(a) {
+  try { return JSON.parse(a.detalle) } catch { return null }
 }
 
 function fmt(n) { return new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(n || 0) }
@@ -69,7 +75,10 @@ async function resolver(estado) {
 }
 
 function estadoBadge(e) {
-  return { aprobada: 'badge-green', pendiente_aprobacion: 'badge-amber', borrador: 'badge-stone', rechazada: 'badge-red', completada: 'badge-blue' }[e] || 'badge-stone'
+  return { aprobada:'badge-green', pendiente_aprobacion:'badge-amber', borrador:'badge-stone', rechazada:'badge-red', completada:'badge-blue' }[e] || 'badge-stone'
+}
+function estadoLabel(e) {
+  return { aprobada:'aprobada', pendiente_aprobacion:'pend. aprobación', borrador:'borrador', rechazada:'rechazada', completada:'finalizada' }[e] || e
 }
 </script>
 
@@ -167,6 +176,31 @@ function estadoBadge(e) {
                 </div>
               </div>
 
+              <!-- Cambios propuestos de cliente -->
+              <template v-if="aprobSeleccionada?.tipo === 'cambio_cliente'">
+                <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
+                  <i class="fa-solid fa-user-pen mr-1" />Cambios propuestos en datos del cliente
+                </h3>
+                <div v-if="parseCambioCliente(aprobSeleccionada)?.cambios" class="rounded-lg overflow-hidden border border-stone-800">
+                  <table class="w-full text-xs">
+                    <thead class="bg-stone-900">
+                      <tr>
+                        <th class="px-3 py-2 text-left text-stone-400 font-medium">Campo</th>
+                        <th class="px-3 py-2 text-left text-stone-400 font-medium">Valor actual</th>
+                        <th class="px-3 py-2 text-left text-amber-400 font-medium">Valor propuesto</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-stone-800">
+                      <tr v-for="(c, k) in parseCambioCliente(aprobSeleccionada)?.cambios" :key="k">
+                        <td class="px-3 py-2 text-stone-400 font-medium">{{ c.label }}</td>
+                        <td class="px-3 py-2 text-stone-500 line-through">{{ c.de ?? '—' }}</td>
+                        <td class="px-3 py-2 text-amber-300 font-semibold">{{ c.a ?? '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+
               <!-- Detalle de la orden -->
               <template v-if="aprobSeleccionada?.orden">
                 <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
@@ -184,7 +218,7 @@ function estadoBadge(e) {
                     <div class="bg-stone-900 rounded-lg px-4 py-3">
                       <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Estado</p>
                       <span class="badge text-xs" :class="estadoBadge(detalleOrden.estado)">
-                        {{ detalleOrden.estado.replace('_',' ') }}
+                        {{ estadoLabel(detalleOrden.estado) }}
                       </span>
                     </div>
                     <div class="bg-stone-900 rounded-lg px-4 py-3">
