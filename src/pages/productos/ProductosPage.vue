@@ -8,11 +8,11 @@ const loading   = ref(true)
 const search    = ref('')
 const filtroBodega = ref('')
 
-const bodegas = [
-  { id: 59, label: 'Prod. Term. Cadejo' },
-  { id: 60, label: 'Prod. Term. Sivar' },
-  { id: 62, label: 'Promocionales' },
-]
+const bodegas = computed(() => {
+  const seen = new Set()
+  productos.value.forEach(p => { if (p.bodega) seen.add(p.bodega) })
+  return [...seen].sort()
+})
 
 onMounted(async () => {
   try { const { data } = await api.get('productos'); productos.value = data }
@@ -22,7 +22,7 @@ onMounted(async () => {
 
 const filtrados = computed(() => {
   let list = productos.value
-  if (filtroBodega.value) list = list.filter(p => p.bodega_id == filtroBodega.value)
+  if (filtroBodega.value) list = list.filter(p => p.bodega === filtroBodega.value)
   if (search.value.trim()) {
     const s = search.value.toLowerCase()
     list = list.filter(p => p.nombre.toLowerCase().includes(s) || (p.codigo || '').toLowerCase().includes(s))
@@ -56,9 +56,9 @@ function stockClass(n) {
       <div class="flex gap-1 bg-stone-800 rounded-lg p-1">
         <button :class="['px-3 py-1.5 rounded text-xs font-medium transition', !filtroBodega ? 'bg-amber-600 text-white' : 'text-stone-400 hover:text-stone-200']"
           @click="filtroBodega = ''">Todas</button>
-        <button v-for="b in bodegas" :key="b.id"
-          :class="['px-3 py-1.5 rounded text-xs font-medium transition', filtroBodega == b.id ? 'bg-amber-600 text-white' : 'text-stone-400 hover:text-stone-200']"
-          @click="filtroBodega = b.id">{{ b.label }}</button>
+        <button v-for="b in bodegas" :key="b"
+          :class="['px-3 py-1.5 rounded text-xs font-medium transition', filtroBodega === b ? 'bg-amber-600 text-white' : 'text-stone-400 hover:text-stone-200']"
+          @click="filtroBodega = b">{{ b }}</button>
       </div>
       <input v-model="search" type="text" placeholder="Buscar por nombre o código..." class="input md:w-64" />
     </div>
