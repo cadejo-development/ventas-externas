@@ -171,6 +171,72 @@ async function eliminarLinea(l) {
   } catch { toast('Error al eliminar', 'error') }
 }
 
+// ── Edición masiva de precios ─────────────────────────────────────────────────
+const modoMasivo   = ref(false)
+const lineasEditar = ref([])
+const savingMasivo = ref(false)
+
+function activarEdicionMasiva() {
+  lineasEditar.value = lineas.value.map(l => ({
+    id:              l.id,
+    nombre_producto: l.nombre_producto,
+    codigo:          l.codigo,
+    precio_sin_iva:  l.precio_sin_iva,
+    precio_con_iva:  l.precio_con_iva,
+  }))
+  modoMasivo.value = true
+}
+
+function cancelarEdicionMasiva() {
+  modoMasivo.value   = false
+  lineasEditar.value = []
+}
+
+function onMasivoSinIva(idx) {
+  const sin = parseFloat(lineasEditar.value[idx].precio_sin_iva)
+  if (!isNaN(sin) && sin >= 0) lineasEditar.value[idx].precio_con_iva = +(sin * (1 + IVA)).toFixed(4)
+}
+
+function onMasivoConIva(idx) {
+  const con = parseFloat(lineasEditar.value[idx].precio_con_iva)
+  if (!isNaN(con) && con >= 0) lineasEditar.value[idx].precio_sin_iva = +(con / (1 + IVA)).toFixed(4)
+}
+
+async function guardarTodoMasivo() {
+  savingMasivo.value = true
+  try {
+    const { data } = await api.patch(`catalogos-precio/${catalogoActivo.value.id}/lineas/batch`, {
+      lineas: lineasEditar.value.map(l => ({
+        id:             l.id,
+        precio_sin_iva: l.precio_sin_iva,
+        precio_con_iva: l.precio_con_iva,
+      }))
+    })
+    await cargarLineas(catalogoActivo.value)
+    await cargarCatalogos()
+    modoMasivo.value = false
+    toast(data.message || 'Precios actualizados')
+  } catch (e) { toast(e.response?.data?.message || 'Error al guardar', 'error') }
+  finally { savingMasivo.value = false }
+}
+
+// ── Ajuste masivo (%) ─────────────────────────────────────────────────────────
+const showModalAjuste = ref(false)
+const formAjuste      = ref({ tipo: 'porcentaje', valor: 5, subir: true })
+const savingAjuste    = ref(false)
+
+async function aplicarAjuste() {
+  savingAjuste.value = true
+  try {
+    const { data } = await api.post(`catalogos-precio/${catalogoActivo.value.id}/ajuste-masivo`, formAjuste.value)
+    await cargarLineas(catalogoActivo.value)
+    await cargarCatalogos()
+    showModalAjuste.value = false
+    toast(data.message || 'Ajuste aplicado')
+  } catch (e) { toast(e.response?.data?.message || 'Error', 'error') }
+  finally { savingAjuste.value = false }
+}
+
 // ── Computed ─────────────────────────────────────────────────────────────────
 const productosDisponibles = computed(() => {
   const enCatalogo = new Set(lineas.value.map(l => l.producto_id))
@@ -285,14 +351,33 @@ onMounted(() => cargarCatalogos())
         </template>
 
         <template v-else>
+          <!-- Header panel -->
           <div class="flex items-center justify-between mb-4">
             <div>
               <h2 class="font-semibold text-neutral-100">{{ catalogoActivo.nombre }}</h2>
               <p class="text-xs text-stone-500 mt-0.5">{{ catalogoActivo.descripcion || 'Precios por producto' }}</p>
             </div>
-            <button @click="abrirNuevaLinea" class="btn btn-primary btn-sm">
-              <i class="fa-solid fa-plus" /> Agregar precio
-            </button>
+            <div v-if="!modoMasivo" class="flex items-center gap-2">
+              <button v-if="lineas.length" @click="showModalAjuste = true" class="btn btn-secondary btn-sm">
+                <i class="fa-solid fa-percent" /> Ajuste %
+              </button>
+              <button v-if="lineas.length" @click="activarEdicionMasiva" class="btn btn-secondary btn-sm">
+                <i class="fa-solid fa-table-cells" /> Editar en masa
+              </button>
+              <button @click="abrirNuevaLinea" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-plus" /> Agregar precio
+              </button>
+            </div>
+            <div v-else class="flex items-center gap-2">
+              <button @click="cancelarEdicionMasiva" class="btn btn-secondary btn-sm">
+                <i class="fa-solid fa-xmark" /> Cancelar
+              </button>
+              <button @click="guardarTodoMasivo" :disabled="savingMasivo" class="btn btn-primary btn-sm">
+                <i v-if="savingMasivo" class="fa-solid fa-circle-notch fa-spin" />
+                <i v-else class="fa-solid fa-floppy-disk" />
+                {{ savingMasivo ? 'Guardando...' : 'Guardar todos' }}
+              </button>
+            </div>
           </div>
 
           <div v-if="loadingLineas" class="py-8 text-center text-stone-600">
@@ -301,7 +386,9 @@ onMounted(() => cargarCatalogos())
           <div v-else-if="!lineas.length" class="py-8 text-center text-stone-600 text-sm">
             No hay precios configurados en este catálogo.
           </div>
-          <div v-else class="divide-y divide-stone-800/60">
+
+          <!-- Vista normal -->
+          <div v-else-if="!modoMasivo" class="divide-y divide-stone-800/60">
             <div v-for="l in lineas" :key="l.id" class="flex items-center gap-3 py-2.5">
               <div class="flex-1 min-w-0">
                 <div class="text-sm text-neutral-200 font-medium truncate">{{ l.nombre_producto }}</div>
@@ -321,6 +408,41 @@ onMounted(() => cargarCatalogos())
                 <button @click="eliminarLinea(l)" class="btn btn-ghost btn-xs w-7 h-7 p-0 rounded-lg">
                   <i class="fa-solid fa-trash text-stone-600 hover:text-rose-400 text-xs" />
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vista de edición masiva -->
+          <div v-else class="space-y-1">
+            <p class="text-xs text-amber-400/80 mb-3">
+              <i class="fa-solid fa-circle-info mr-1" />
+              Edita los precios directamente. Al ingresar uno, el otro se recalcula (IVA 13%). Guarda todos al final.
+            </p>
+            <div v-for="(l, idx) in lineasEditar" :key="l.id"
+                 class="flex items-center gap-3 py-2 px-3 rounded-xl bg-stone-800/30 border border-stone-700/40">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm text-neutral-200 font-medium truncate">{{ l.nombre_producto }}</div>
+                <div class="text-[11px] text-stone-500 font-mono">{{ l.codigo }}</div>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <div>
+                  <p class="text-[10px] text-stone-500 mb-1">Sin IVA</p>
+                  <div class="relative w-28">
+                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-500 text-xs">$</span>
+                    <input v-model.number="l.precio_sin_iva" @input="onMasivoSinIva(idx)"
+                           type="number" min="0" step="0.0001"
+                           class="input pl-5 h-8 text-sm text-right tabular-nums w-full" />
+                  </div>
+                </div>
+                <div>
+                  <p class="text-[10px] text-stone-500 mb-1">Con IVA</p>
+                  <div class="relative w-28">
+                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-500 text-xs">$</span>
+                    <input v-model.number="l.precio_con_iva" @input="onMasivoConIva(idx)"
+                           type="number" min="0" step="0.0001"
+                           class="input pl-5 h-8 text-sm text-right tabular-nums w-full text-amber-400" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -421,6 +543,99 @@ onMounted(() => cargarCatalogos())
                 <button type="submit" :disabled="savingLinea" class="btn btn-primary">
                   <i v-if="savingLinea" class="fa-solid fa-circle-notch fa-spin" />
                   {{ savingLinea ? 'Guardando...' : 'Guardar precio' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ── Modal: ajuste masivo ──────────────────────────────────────────── -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showModalAjuste" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+             @click.self="showModalAjuste = false">
+          <div class="bg-stone-900 border border-stone-700/60 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-stone-800">
+              <div>
+                <h3 class="font-bold text-neutral-100">Ajuste masivo de precios</h3>
+                <p class="text-xs text-stone-500 mt-0.5">{{ catalogoActivo?.nombre }} · {{ lineas.length }} productos</p>
+              </div>
+              <button @click="showModalAjuste = false" class="btn btn-ghost btn-xs w-8 h-8 p-0 rounded-lg">
+                <i class="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <form @submit.prevent="aplicarAjuste" class="p-6 space-y-4">
+              <!-- Tipo de ajuste -->
+              <div>
+                <label class="label">Tipo de ajuste</label>
+                <div class="flex gap-2">
+                  <button type="button" @click="formAjuste.tipo = 'porcentaje'"
+                    class="flex-1 px-3 py-2 rounded-xl border text-sm font-medium transition-all"
+                    :class="formAjuste.tipo === 'porcentaje'
+                      ? 'border-amber-500/60 bg-amber-900/20 text-amber-300'
+                      : 'border-stone-700 bg-stone-800/40 text-stone-400 hover:text-stone-200'">
+                    <i class="fa-solid fa-percent mr-1.5" />Porcentaje
+                  </button>
+                  <button type="button" @click="formAjuste.tipo = 'monto_fijo'"
+                    class="flex-1 px-3 py-2 rounded-xl border text-sm font-medium transition-all"
+                    :class="formAjuste.tipo === 'monto_fijo'
+                      ? 'border-amber-500/60 bg-amber-900/20 text-amber-300'
+                      : 'border-stone-700 bg-stone-800/40 text-stone-400 hover:text-stone-200'">
+                    <i class="fa-solid fa-dollar-sign mr-1.5" />Monto fijo
+                  </button>
+                </div>
+              </div>
+
+              <!-- Dirección -->
+              <div>
+                <label class="label">Dirección</label>
+                <div class="flex gap-2">
+                  <button type="button" @click="formAjuste.subir = true"
+                    class="flex-1 px-3 py-2 rounded-xl border text-sm font-medium transition-all"
+                    :class="formAjuste.subir
+                      ? 'border-emerald-500/60 bg-emerald-900/20 text-emerald-300'
+                      : 'border-stone-700 bg-stone-800/40 text-stone-400 hover:text-stone-200'">
+                    <i class="fa-solid fa-arrow-up mr-1.5" />Subir
+                  </button>
+                  <button type="button" @click="formAjuste.subir = false"
+                    class="flex-1 px-3 py-2 rounded-xl border text-sm font-medium transition-all"
+                    :class="!formAjuste.subir
+                      ? 'border-rose-500/60 bg-rose-900/20 text-rose-300'
+                      : 'border-stone-700 bg-stone-800/40 text-stone-400 hover:text-stone-200'">
+                    <i class="fa-solid fa-arrow-down mr-1.5" />Bajar
+                  </button>
+                </div>
+              </div>
+
+              <!-- Valor -->
+              <div>
+                <label class="label">Valor {{ formAjuste.tipo === 'porcentaje' ? '(%)' : '($)' }} *</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">
+                    {{ formAjuste.tipo === 'porcentaje' ? '%' : '$' }}
+                  </span>
+                  <input v-model.number="formAjuste.valor" required type="number" min="0"
+                         :max="formAjuste.tipo === 'porcentaje' ? 100 : undefined"
+                         step="0.01" class="input pl-7" />
+                </div>
+                <p class="text-[11px] text-stone-500 mt-1">
+                  Se aplicará a los {{ lineas.length }} productos del catálogo.
+                  <span v-if="formAjuste.tipo === 'monto_fijo'" class="text-amber-400/70">
+                    · El precio con IVA se recalculará desde el nuevo precio sin IVA.
+                  </span>
+                </p>
+              </div>
+
+              <div class="flex justify-end gap-3 pt-2 border-t border-stone-800">
+                <button type="button" @click="showModalAjuste = false" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" :disabled="savingAjuste || !formAjuste.valor"
+                        class="btn"
+                        :class="formAjuste.subir ? 'btn-primary' : 'bg-rose-600 hover:bg-rose-500 text-white'">
+                  <i v-if="savingAjuste" class="fa-solid fa-circle-notch fa-spin" />
+                  <i v-else :class="formAjuste.subir ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-down'" />
+                  {{ savingAjuste ? 'Aplicando...' : (formAjuste.subir ? 'Subir precios' : 'Bajar precios') }}
                 </button>
               </div>
             </form>

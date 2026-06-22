@@ -1,23 +1,53 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '../../services/api.js'
+import api, { getSession } from '../../services/api.js'
 import PageHeader from '../../components/PageHeader.vue'
+import { useToast } from '../../composables/useToast.js'
 
 const router  = useRouter()
+const session = getSession()
+const { push: toast } = useToast()
+
 const ordenes = ref([])
 const meta    = ref({ current_page: 1, last_page: 1, total: 0 })
 const loading = ref(true)
 const filtroEstado = ref('')
+const busqueda     = ref('')
+const fechaDesde   = ref('')
+const fechaHasta   = ref('')
 const page    = ref(1)
+
+let debounceTimer = null
 
 async function cargar(p = 1) {
   page.value = p; loading.value = true
   try {
-    const { data } = await api.get('ordenes', { params: { estado: filtroEstado.value, page: p } })
+    const { data } = await api.get('ordenes', {
+      params: {
+        estado:      filtroEstado.value || undefined,
+        busqueda:    busqueda.value     || undefined,
+        fecha_desde: fechaDesde.value   || undefined,
+        fecha_hasta: fechaHasta.value   || undefined,
+        page: p,
+      }
+    })
     ordenes.value = data.data; meta.value = data
   } catch (e) { console.error(e) }
   finally { loading.value = false }
+}
+
+function onBusqueda() {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => cargar(1), 350)
+}
+
+function limpiarFiltros() {
+  busqueda.value   = ''
+  fechaDesde.value = ''
+  fechaHasta.value = ''
+  filtroEstado.value = ''
+  cargar(1)
 }
 
 onMounted(() => cargar(1))
@@ -30,32 +60,97 @@ const paginasVisibles = computed(() => {
 
 const estadoOpts = [
   ['', 'Todos'], ['borrador', 'Borrador'], ['pendiente_aprobacion', 'Pendiente'],
-  ['aprobada', 'Aprobada'], ['rechazada', 'Rechazada'], ['completada', 'Completada'],
+  ['aprobada', 'Aprobada'], ['despachada', 'Despachada'], ['rechazada', 'Rechazada'], ['completada', 'Completada'],
 ]
 
 function estadoBadge(e) {
-  return { aprobada: 'badge-green', pendiente_aprobacion: 'badge-amber', borrador: 'badge-stone', rechazada: 'badge-red', completada: 'badge-blue' }[e] || 'badge-stone'
+  return {
+    aprobada: 'badge-green', pendiente_aprobacion: 'badge-amber', borrador: 'badge-stone',
+    rechazada: 'badge-red', completada: 'badge-blue', despachada: 'badge-purple',
+  }[e] || 'badge-stone'
 }
 
 function fmt(n) { return new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(n || 0) }
 
 // ── Drawer de detalle ─────────────────────────────────────────────────────────
-const drawer       = ref(false)
-const detalleOrden = ref(null)
+const drawer         = ref(false)
+const detalleOrden   = ref(null)
 const loadingDetalle = ref(false)
+const savingAction   = ref('')
+
+// Pagos
+const pagos        = ref([])
+const loadingPagos = ref(false)
+const showPagoForm = ref(false)
+const pagoForm     = ref({
+  fecha: new Date().toISOString().slice(0,10), forma_pago: 'transferencia',
+  monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: ''
+})
 
 async function verDetalle(id) {
-  drawer.value       = true
+  drawer.value         = true
   loadingDetalle.value = true
-  detalleOrden.value = null
+  detalleOrden.value   = null
+  showPagoForm.value   = false
+  pagos.value          = []
   try {
     const { data } = await api.get(`ordenes/${id}`)
     detalleOrden.value = data
+    if (data.tipo_venta === 'credito') cargarPagos(id)
   } catch (e) { console.error(e) }
   finally { loadingDetalle.value = false }
 }
 
 function cerrarDrawer() { drawer.value = false }
+
+async function cargarPagos(ordenId) {
+  loadingPagos.value = true
+  try {
+    const { data } = await api.get(`ordenes/${ordenId}/pagos`)
+    pagos.value = data.data ?? []
+  } catch { pagos.value = [] }
+  finally { loadingPagos.value = false }
+}
+
+async function guardarPago() {
+  if (!pagoForm.value.monto) { toast('Ingresa el monto', 'error'); return }
+  savingAction.value = 'pago'
+  try {
+    await api.post(`ordenes/${detalleOrden.value.id}/pagos`, pagoForm.value)
+    toast('Pago registrado')
+    showPagoForm.value = false
+    pagoForm.value = { fecha: new Date().toISOString().slice(0,10), forma_pago: 'transferencia', monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: '' }
+    const { data } = await api.get(`ordenes/${detalleOrden.value.id}`)
+    detalleOrden.value = data
+    await cargarPagos(data.id)
+    await cargar(page.value)
+  } catch (e) { toast(e.response?.data?.message || 'Error al registrar pago', 'error') }
+  finally { savingAction.value = '' }
+}
+
+async function marcarDespachada() {
+  savingAction.value = 'despachar'
+  try {
+    await api.patch(`ordenes/${detalleOrden.value.id}/despachar`, { despachada_por: session?.nombre })
+    toast('Orden marcada como despachada')
+    const { data } = await api.get(`ordenes/${detalleOrden.value.id}`)
+    detalleOrden.value = data
+    await cargar(page.value)
+  } catch (e) { toast(e.response?.data?.message || 'Error', 'error') }
+  finally { savingAction.value = '' }
+}
+
+async function marcarFacturado() {
+  savingAction.value = 'facturar'
+  try {
+    await api.patch(`ordenes/${detalleOrden.value.id}/facturar`, { facturado_por: session?.nombre })
+    toast('Orden marcada como facturada')
+    const { data } = await api.get(`ordenes/${detalleOrden.value.id}`)
+    detalleOrden.value = data
+    await cargar(page.value)
+  } catch (e) { toast(e.response?.data?.message || 'Error', 'error') }
+  finally { savingAction.value = '' }
+}
 
 function descargarExcel(id) {
   const url = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/cadejo-ventas')
@@ -64,24 +159,100 @@ function descargarExcel(id) {
 
 const estadoLabel = (e) => ({
   borrador: 'Borrador', pendiente_aprobacion: 'Pendiente de aprobación',
-  aprobada: 'Aprobada', rechazada: 'Rechazada', completada: 'Completada',
+  aprobada: 'Aprobada', rechazada: 'Rechazada', completada: 'Completada', despachada: 'Despachada',
 }[e] || e)
+
+const docLabel = (d) => d === 'ccf' ? 'CCF' : 'Consumidor Final'
+const docBadge = (d) => d === 'ccf' ? 'badge-amber' : 'badge-stone'
+
+const hayFiltros = computed(() => busqueda.value || fechaDesde.value || fechaHasta.value || filtroEstado.value)
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/cadejo-ventas'
+
+function exportarBriloFacturas() {
+  const params = new URLSearchParams()
+  if (fechaDesde.value) params.set('fecha_desde', fechaDesde.value)
+  if (fechaHasta.value) params.set('fecha_hasta', fechaHasta.value)
+  window.open(`${API_BASE}/export/brilo-facturas?${params}`, '_blank')
+}
+
+function exportarBriloClientes() {
+  window.open(`${API_BASE}/export/brilo-clientes`, '_blank')
+}
+
+function exportarContabilidad() {
+  const params = new URLSearchParams()
+  if (fechaDesde.value) params.set('fecha_desde', fechaDesde.value)
+  if (fechaHasta.value) params.set('fecha_hasta', fechaHasta.value)
+  window.open(`${API_BASE}/export/contabilidad-csv?${params}`, '_blank')
+}
 </script>
 
 <template>
   <div>
     <PageHeader title="Órdenes de venta">
       <template #actions>
+        <!-- Exportar Brilo -->
+        <div class="relative group">
+          <button class="btn btn-secondary">
+            <i class="fa-solid fa-file-excel mr-1.5" />Exportar Brilo
+            <i class="fa-solid fa-chevron-down ml-1.5 text-xs" />
+          </button>
+          <div class="absolute right-0 top-full mt-1.5 bg-stone-900 border border-stone-700 rounded-xl shadow-xl overflow-hidden z-20 hidden group-hover:block min-w-[220px]">
+            <button @click="exportarBriloFacturas"
+              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-amber-500/10 hover:text-amber-300 transition-colors flex items-center gap-2.5">
+              <i class="fa-solid fa-file-invoice text-amber-500/70 w-4" />
+              Facturas de venta
+            </button>
+            <button @click="exportarBriloClientes"
+              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-amber-500/10 hover:text-amber-300 transition-colors flex items-center gap-2.5">
+              <i class="fa-solid fa-users text-amber-500/70 w-4" />
+              Catálogo clientes
+            </button>
+            <div class="border-t border-stone-800 my-1" />
+            <button @click="exportarContabilidad"
+              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors flex items-center gap-2.5">
+              <i class="fa-solid fa-file-csv text-emerald-500/70 w-4" />
+              CSV Contabilidad
+            </button>
+          </div>
+        </div>
+
         <RouterLink to="/ordenes/nueva" class="btn btn-primary">
           <i class="fa-solid fa-plus mr-2" />Nueva orden
         </RouterLink>
       </template>
     </PageHeader>
 
-    <!-- Filtros -->
-    <div class="flex gap-1 bg-stone-800 rounded-lg p-1 mb-5 w-fit">
+    <!-- Filtros superiores -->
+    <div class="flex flex-wrap gap-3 mb-4">
+      <div class="relative flex-1 min-w-48 max-w-xs">
+        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-500 text-xs pointer-events-none" />
+        <input v-model="busqueda" @input="onBusqueda" type="text" placeholder="Buscar cliente, NIT..."
+          class="input pl-9 h-9 text-sm" />
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-stone-500">Desde</span>
+        <input v-model="fechaDesde" @change="cargar(1)" type="date" class="input h-9 text-sm w-36" />
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-stone-500">Hasta</span>
+        <input v-model="fechaHasta" @change="cargar(1)" type="date" class="input h-9 text-sm w-36" />
+      </div>
+
+      <button v-if="hayFiltros" @click="limpiarFiltros"
+        class="text-xs text-stone-400 hover:text-red-400 transition-colors flex items-center gap-1.5">
+        <i class="fa-solid fa-xmark" />Limpiar
+      </button>
+    </div>
+
+    <!-- Filtros estado -->
+    <div class="flex gap-1 bg-stone-800 rounded-lg p-1 mb-5 w-fit overflow-x-auto max-w-full">
       <button v-for="[val, label] in estadoOpts" :key="val"
-        :class="['px-3 py-1.5 rounded text-xs font-medium transition', filtroEstado === val ? 'bg-amber-600 text-white' : 'text-stone-400 hover:text-stone-200']"
+        :class="['px-3 py-1.5 rounded text-xs font-medium transition whitespace-nowrap',
+          filtroEstado === val ? 'bg-amber-600 text-white' : 'text-stone-400 hover:text-stone-200']"
         @click="filtroEstado = val; cargar(1)">{{ label }}</button>
     </div>
 
@@ -98,44 +269,54 @@ const estadoLabel = (e) => ({
       </div>
 
       <div class="table-wrapper overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm min-w-[900px]">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Cliente</th>
-              <th>Tipo</th>
-              <th class="text-right">Total</th>
-              <th class="text-center">Estado</th>
-              <th>Fecha</th>
-              <th class="text-center w-16">Acciones</th>
+              <th class="px-3 py-2.5">#</th>
+              <th class="px-3 py-2.5">Cliente</th>
+              <th class="px-3 py-2.5">Doc.</th>
+              <th class="px-3 py-2.5 text-right">Total</th>
+              <th class="px-3 py-2.5 text-center">Estado</th>
+              <th class="px-3 py-2.5">F. Solicitud</th>
+              <th class="px-3 py-2.5">F. Factura</th>
+              <th class="px-3 py-2.5">F. Entrega</th>
+              <th class="px-3 py-2.5 text-center">Facturado</th>
+              <th class="px-3 py-2.5 w-8" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="o in ordenes" :key="o.id" class="hover:bg-stone-800/40 transition-colors">
-              <td class="px-4 py-2.5 font-mono text-amber-300 text-xs">#{{ o.id }}</td>
-              <td class="px-4 py-2.5 font-medium text-neutral-100">{{ o.cliente?.nombres || '—' }}</td>
-              <td class="px-4 py-2.5">
-                <span class="badge" :class="o.tipo_venta === 'credito' ? 'badge-blue' : 'badge-stone'">
-                  {{ o.tipo_venta }}
-                </span>
+            <tr v-for="o in ordenes" :key="o.id"
+              class="hover:bg-stone-800/40 transition-colors cursor-pointer"
+              @click="verDetalle(o.id)">
+              <td class="px-3 py-2.5 font-mono text-amber-300 text-xs">#{{ o.id }}</td>
+              <td class="px-3 py-2.5">
+                <div class="font-medium text-neutral-100">{{ o.cliente?.nombres || '—' }}</div>
+                <div v-if="o.tipo_orden === 'autoconsumo'" class="text-[10px] text-orange-400/80 mt-0.5">
+                  Autoconsumo{{ o.sub_ceco ? ` · ${o.sub_ceco}` : '' }}
+                </div>
               </td>
-              <td class="px-4 py-2.5 text-right tabular-nums text-emerald-400 font-semibold">{{ fmt(o.total) }}</td>
-              <td class="px-4 py-2.5 text-center">
-                <span class="badge" :class="estadoBadge(o.estado)">{{ o.estado.replace('_', ' ') }}</span>
+              <td class="px-3 py-2.5">
+                <span class="badge text-[10px]" :class="docBadge(o.tipo_documento)">{{ docLabel(o.tipo_documento) }}</span>
               </td>
-              <td class="px-4 py-2.5 text-stone-400 text-xs">{{ o.created_at?.slice(0, 10) }}</td>
-              <td class="px-4 py-2.5 text-center">
-                <button @click="verDetalle(o.id)"
-                  class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-stone-800 hover:bg-amber-600/20 hover:text-amber-400 text-stone-400 transition-colors border border-stone-700 hover:border-amber-600/40"
-                  title="Ver detalle">
-                  <i class="fa-solid fa-eye text-xs" />
-                </button>
+              <td class="px-3 py-2.5 text-right tabular-nums text-emerald-400 font-semibold">{{ fmt(o.total) }}</td>
+              <td class="px-3 py-2.5 text-center">
+                <span class="badge" :class="estadoBadge(o.estado)">{{ estadoLabel(o.estado) }}</span>
+              </td>
+              <td class="px-3 py-2.5 text-stone-400 text-xs">{{ o.created_at?.slice(0, 10) }}</td>
+              <td class="px-3 py-2.5 text-stone-400 text-xs">{{ o.fecha_facturacion || '—' }}</td>
+              <td class="px-3 py-2.5 text-stone-400 text-xs">{{ o.fecha_entrega || '—' }}</td>
+              <td class="px-3 py-2.5 text-center">
+                <i v-if="o.facturado" class="fa-solid fa-circle-check text-emerald-400 text-xs" title="Facturada" />
+                <span v-else class="text-stone-700 text-xs">—</span>
+              </td>
+              <td class="px-3 py-2.5 text-center">
+                <i class="fa-solid fa-chevron-right text-xs text-stone-700" />
               </td>
             </tr>
             <tr v-if="!ordenes.length">
-              <td colspan="7" class="px-4 py-16 text-center text-stone-500">
+              <td colspan="10" class="px-4 py-16 text-center text-stone-500">
                 <i class="fa-solid fa-file-invoice text-3xl text-stone-700 mb-3 block" />
-                Sin órdenes aún
+                Sin órdenes{{ hayFiltros ? ' con esos filtros' : ' aún' }}
               </td>
             </tr>
           </tbody>
@@ -155,15 +336,12 @@ const estadoLabel = (e) => ({
     <!-- ── Drawer: detalle de orden ─────────────────────────────────────────── -->
     <Transition name="drawer-fade">
       <div v-if="drawer" class="fixed inset-0 z-50 flex" @click.self="cerrarDrawer">
-        <!-- Overlay -->
         <div class="absolute inset-0 bg-black/50" @click="cerrarDrawer" />
 
-        <!-- Panel -->
         <Transition name="drawer-slide">
           <div v-if="drawer"
             class="absolute right-0 top-0 bottom-0 w-full max-w-lg bg-stone-950 border-l border-stone-800 shadow-2xl flex flex-col">
 
-            <!-- Header del drawer -->
             <div class="flex items-center justify-between px-6 py-4 border-b border-stone-800 flex-shrink-0">
               <div>
                 <h2 class="text-base font-semibold text-neutral-100">
@@ -177,10 +355,8 @@ const estadoLabel = (e) => ({
               </button>
             </div>
 
-            <!-- Contenido -->
             <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-              <!-- Skeleton -->
               <template v-if="loadingDetalle">
                 <div class="space-y-3 animate-pulse">
                   <div class="h-4 bg-stone-800 rounded w-3/4" />
@@ -191,37 +367,68 @@ const estadoLabel = (e) => ({
 
               <template v-else-if="detalleOrden">
 
+                <!-- Acciones rápidas -->
+                <div v-if="['aprobada','despachada'].includes(detalleOrden.estado)" class="flex gap-2 flex-wrap">
+                  <button v-if="detalleOrden.estado === 'aprobada'"
+                    @click="marcarDespachada" :disabled="savingAction === 'despachar'"
+                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-purple-900/20 border border-purple-700/40 text-purple-300 hover:bg-purple-900/40 disabled:opacity-40 transition-all">
+                    <i v-if="savingAction === 'despachar'" class="fa-solid fa-circle-notch fa-spin" />
+                    <i v-else class="fa-solid fa-truck" />
+                    Marcar despachada
+                  </button>
+                  <button v-if="!detalleOrden.facturado"
+                    @click="marcarFacturado" :disabled="savingAction === 'facturar'"
+                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-emerald-900/20 border border-emerald-700/40 text-emerald-300 hover:bg-emerald-900/40 disabled:opacity-40 transition-all">
+                    <i v-if="savingAction === 'facturar'" class="fa-solid fa-circle-notch fa-spin" />
+                    <i v-else class="fa-solid fa-receipt" />
+                    Marcar facturada
+                  </button>
+                  <div v-else
+                    class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs bg-emerald-900/20 border border-emerald-700/30 text-emerald-400">
+                    <i class="fa-solid fa-circle-check" />Facturada{{ detalleOrden.facturado_por ? ` · ${detalleOrden.facturado_por}` : '' }}
+                  </div>
+                </div>
+
                 <!-- Datos generales -->
                 <div class="grid grid-cols-2 gap-3">
                   <div class="bg-stone-900 rounded-lg px-4 py-3">
                     <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Estado</p>
-                    <span class="badge text-xs" :class="estadoBadge(detalleOrden.estado)">
-                      {{ estadoLabel(detalleOrden.estado) }}
-                    </span>
+                    <span class="badge text-xs" :class="estadoBadge(detalleOrden.estado)">{{ estadoLabel(detalleOrden.estado) }}</span>
+                  </div>
+                  <div class="bg-stone-900 rounded-lg px-4 py-3">
+                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Tipo documento</p>
+                    <span class="badge text-xs" :class="docBadge(detalleOrden.tipo_documento)">{{ docLabel(detalleOrden.tipo_documento) }}</span>
                   </div>
                   <div class="bg-stone-900 rounded-lg px-4 py-3">
                     <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Tipo de venta</p>
-                    <span class="badge text-xs" :class="detalleOrden.tipo_venta === 'credito' ? 'badge-blue' : 'badge-stone'">
-                      {{ detalleOrden.tipo_venta }}
-                    </span>
-                  </div>
-                  <div class="bg-stone-900 rounded-lg px-4 py-3">
-                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Fecha</p>
-                    <p class="text-sm text-neutral-200">{{ detalleOrden.created_at?.slice(0,10) }}</p>
+                    <span class="badge text-xs" :class="detalleOrden.tipo_venta === 'credito' ? 'badge-blue' : 'badge-stone'">{{ detalleOrden.tipo_venta }}</span>
                   </div>
                   <div class="bg-stone-900 rounded-lg px-4 py-3">
                     <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Plazo</p>
-                    <p class="text-sm text-neutral-200">
-                      {{ detalleOrden.plazo_solicitado ? detalleOrden.plazo_solicitado + ' días' : 'Contado' }}
-                    </p>
+                    <p class="text-sm text-neutral-200">{{ detalleOrden.plazo_solicitado ? `${detalleOrden.plazo_solicitado} días` : 'Contado' }}</p>
+                  </div>
+                  <div class="bg-stone-900 rounded-lg px-4 py-3">
+                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">F. Solicitud</p>
+                    <p class="text-sm text-neutral-200">{{ detalleOrden.created_at?.slice(0,10) }}</p>
+                  </div>
+                  <div class="bg-stone-900 rounded-lg px-4 py-3">
+                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">F. Facturación</p>
+                    <p class="text-sm text-neutral-200">{{ detalleOrden.fecha_facturacion || '—' }}</p>
+                  </div>
+                  <div class="bg-stone-900 rounded-lg px-4 py-3">
+                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">F. Entrega</p>
+                    <p class="text-sm text-neutral-200">{{ detalleOrden.fecha_entrega || '—' }}</p>
                   </div>
                   <div v-if="detalleOrden.creado_por" class="bg-stone-900 rounded-lg px-4 py-3">
                     <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Creado por</p>
                     <p class="text-sm text-neutral-200">{{ detalleOrden.creado_por }}</p>
                   </div>
-                  <div v-if="detalleOrden.aprobado_por" class="bg-stone-900 rounded-lg px-4 py-3">
-                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Aprobado por</p>
-                    <p class="text-sm text-emerald-400">{{ detalleOrden.aprobado_por }}</p>
+                  <div v-if="detalleOrden.despachada_at" class="bg-stone-900 rounded-lg px-4 py-3 col-span-2">
+                    <p class="text-[10px] text-stone-500 uppercase tracking-wide mb-1">Despachada</p>
+                    <p class="text-sm text-purple-300">
+                      {{ detalleOrden.despachada_at?.slice(0,10) }}
+                      <span v-if="detalleOrden.despachada_por" class="text-stone-400"> · por {{ detalleOrden.despachada_por }}</span>
+                    </p>
                   </div>
                 </div>
 
@@ -281,16 +488,95 @@ const estadoLabel = (e) => ({
                   </div>
                 </div>
 
+                <!-- ── Pagos (solo crédito) ────────────────────────────────── -->
+                <div v-if="detalleOrden.tipo_venta === 'credito'">
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
+                      <i class="fa-solid fa-coins mr-1" />Pagos registrados
+                    </h3>
+                    <button v-if="['aprobada','despachada','completada'].includes(detalleOrden.estado)"
+                      @click="showPagoForm = !showPagoForm"
+                      class="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-colors">
+                      <i :class="showPagoForm ? 'fa-solid fa-xmark' : 'fa-solid fa-plus'" />
+                      {{ showPagoForm ? 'Cancelar' : 'Registrar pago' }}
+                    </button>
+                  </div>
+
+                  <Transition name="fade">
+                    <div v-if="showPagoForm"
+                      class="bg-stone-900/60 border border-stone-800 rounded-xl p-4 mb-3 space-y-3">
+                      <div class="grid grid-cols-2 gap-3">
+                        <div>
+                          <label class="label text-xs">Fecha</label>
+                          <input v-model="pagoForm.fecha" type="date" class="input text-sm h-9" />
+                        </div>
+                        <div>
+                          <label class="label text-xs">Forma de pago</label>
+                          <select v-model="pagoForm.forma_pago" class="select text-sm h-9">
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="otro">Otro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="label text-xs">Monto ($)</label>
+                          <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 text-xs">$</span>
+                            <input v-model.number="pagoForm.monto" type="number" min="0.01" step="0.01"
+                              class="input text-sm pl-6 h-9" placeholder="0.00" />
+                          </div>
+                        </div>
+                        <div>
+                          <label class="label text-xs">Comprobante</label>
+                          <input v-model="pagoForm.comprobante" type="text" placeholder="N° ref..."
+                            class="input text-sm h-9" />
+                        </div>
+                      </div>
+                      <button @click="guardarPago" :disabled="savingAction === 'pago'"
+                        class="w-full py-2 rounded-xl text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+                        <i v-if="savingAction === 'pago'" class="fa-solid fa-circle-notch fa-spin text-xs" />
+                        <i v-else class="fa-solid fa-floppy-disk text-xs" />
+                        Guardar pago
+                      </button>
+                    </div>
+                  </Transition>
+
+                  <div v-if="loadingPagos" class="text-center py-4 text-stone-500 text-xs">
+                    <i class="fa-solid fa-circle-notch fa-spin mr-1" />Cargando pagos...
+                  </div>
+                  <div v-else-if="pagos.length" class="rounded-xl border border-stone-800 overflow-hidden">
+                    <table class="w-full text-xs">
+                      <thead class="bg-stone-900">
+                        <tr>
+                          <th class="px-3 py-2 text-left text-stone-400">Fecha</th>
+                          <th class="px-3 py-2 text-left text-stone-400">Forma</th>
+                          <th class="px-3 py-2 text-right text-stone-400">Monto</th>
+                          <th class="px-3 py-2 text-left text-stone-400">Ref.</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-stone-800/60">
+                        <tr v-for="p in pagos" :key="p.id" class="hover:bg-stone-900/40">
+                          <td class="px-3 py-2 text-stone-300">{{ p.fecha?.slice(0,10) }}</td>
+                          <td class="px-3 py-2 text-stone-300 capitalize">{{ p.forma_pago }}</td>
+                          <td class="px-3 py-2 text-right text-emerald-400 font-semibold tabular-nums">{{ fmt(p.monto) }}</td>
+                          <td class="px-3 py-2 text-stone-500">{{ p.comprobante || '—' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div v-else class="text-center py-5 text-stone-600 text-xs">Sin pagos registrados aún</div>
+                </div>
+
               </template>
             </div>
 
-            <!-- Footer: descarga Excel (solo órdenes aprobadas o completadas) -->
-            <div v-if="detalleOrden && ['aprobada','completada'].includes(detalleOrden.estado)"
-              class="flex-shrink-0 px-6 py-4 border-t border-stone-800 bg-stone-950">
-              <button @click="descargarExcel(detalleOrden.id)"
+            <div v-if="detalleOrden" class="flex-shrink-0 px-6 py-4 border-t border-stone-800 bg-stone-950">
+              <button v-if="['aprobada','completada','despachada'].includes(detalleOrden.estado)"
+                @click="descargarExcel(detalleOrden.id)"
                 class="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-sm transition-colors">
-                <i class="fa-solid fa-file-excel" />
-                Descargar Excel
+                <i class="fa-solid fa-file-excel" />Descargar Excel
               </button>
             </div>
           </div>
@@ -303,7 +589,8 @@ const estadoLabel = (e) => ({
 <style scoped>
 .drawer-fade-enter-active, .drawer-fade-leave-active { transition: opacity 0.2s ease; }
 .drawer-fade-enter-from, .drawer-fade-leave-to { opacity: 0; }
-
 .drawer-slide-enter-active, .drawer-slide-leave-active { transition: transform 0.25s ease; }
 .drawer-slide-enter-from, .drawer-slide-leave-to { transform: translateX(100%); }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

@@ -75,6 +75,71 @@ async function guardar() {
 }
 
 const esCredito = (c) => c.limite_credito > 0
+
+// ── Documentos de cliente ─────────────────────────────────────────────────────
+const showDocModal    = ref(false)
+const docClienteId    = ref(null)
+const docClienteNombre = ref('')
+const documentos      = ref([])
+const loadingDocs     = ref(false)
+const savingDoc       = ref(false)
+const docForm         = ref({ tipo: 'tarjeta_iva', archivo: null })
+
+const TIPO_DOC_LABELS = {
+  tarjeta_iva:    'Tarjeta IVA',
+  carta_exencion: 'Carta de exención',
+  otro:           'Otro',
+}
+
+async function abrirDocumentos(c) {
+  docClienteId.value     = c.id
+  docClienteNombre.value = c.nombres
+  showDocModal.value     = true
+  loadingDocs.value      = true
+  try {
+    const { data } = await api.get(`clientes/${c.id}/documentos`)
+    documentos.value = data.data ?? []
+  } catch { toast('Error cargando documentos', 'error') }
+  finally { loadingDocs.value = false }
+}
+
+function onArchivoChange(e) {
+  docForm.value.archivo = e.target.files[0] ?? null
+}
+
+async function subirDocumento() {
+  if (!docForm.value.archivo) { toast('Selecciona un archivo', 'error'); return }
+  savingDoc.value = true
+  try {
+    const fd = new FormData()
+    fd.append('tipo', docForm.value.tipo)
+    fd.append('archivo', docForm.value.archivo)
+    await api.post(`clientes/${docClienteId.value}/documentos`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    toast('Documento subido')
+    docForm.value = { tipo: 'tarjeta_iva', archivo: null }
+    const { data } = await api.get(`clientes/${docClienteId.value}/documentos`)
+    documentos.value = data.data ?? []
+  } catch (e) { toast(e.response?.data?.message || 'Error al subir', 'error') }
+  finally { savingDoc.value = false }
+}
+
+async function descargarDoc(docId) {
+  try {
+    const { data } = await api.get(`clientes/${docClienteId.value}/documentos/${docId}`)
+    window.open(data.url, '_blank')
+  } catch { toast('Error al obtener enlace', 'error') }
+}
+
+async function eliminarDoc(docId) {
+  if (!confirm('¿Eliminar este documento?')) return
+  try {
+    await api.delete(`clientes/${docClienteId.value}/documentos/${docId}`)
+    documentos.value = documentos.value.filter(d => d.id !== docId)
+    toast('Documento eliminado')
+  } catch { toast('Error al eliminar', 'error') }
+}
 </script>
 
 <template>
@@ -132,6 +197,7 @@ const esCredito = (c) => c.limite_credito > 0
               <th>Tipo</th>
               <th class="text-right">Límite crédito</th>
               <th class="text-right hidden md:table-cell">Plazo</th>
+              <th class="text-right hidden lg:table-cell">Días pago</th>
               <th class="text-center">Acciones</th>
             </tr>
           </thead>
@@ -171,14 +237,27 @@ const esCredito = (c) => c.limite_credito > 0
               <td class="text-right text-stone-400 text-xs hidden md:table-cell">
                 {{ c.plazo_credito > 0 ? `${c.plazo_credito} días` : '—' }}
               </td>
+              <td class="text-right hidden lg:table-cell">
+                <span v-if="c.avg_dias_pago !== null && c.avg_dias_pago !== undefined"
+                      class="text-xs tabular-nums font-medium"
+                      :class="c.avg_dias_pago > (c.plazo_credito || 30) ? 'text-rose-400' : 'text-emerald-400'">
+                  {{ c.avg_dias_pago }} d
+                </span>
+                <span v-else class="text-stone-700 text-xs">—</span>
+              </td>
               <td class="text-center">
-                <button class="btn btn-ghost btn-xs" @click="abrirEditar(c)" title="Editar">
-                  <i class="fa-solid fa-pen-to-square text-stone-500" />
-                </button>
+                <div class="flex items-center justify-center gap-1">
+                  <button class="btn btn-ghost btn-xs" @click="abrirDocumentos(c)" title="Documentos">
+                    <i class="fa-solid fa-paperclip text-stone-500" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs" @click="abrirEditar(c)" title="Editar">
+                    <i class="fa-solid fa-pen-to-square text-stone-500" />
+                  </button>
+                </div>
               </td>
             </tr>
             <tr v-if="!clientes.length">
-              <td colspan="7" class="py-16 text-center text-stone-500">
+              <td colspan="8" class="py-16 text-center text-stone-500">
                 <i class="fa-solid fa-building text-4xl mb-3 block opacity-20" />
                 No se encontraron clientes
               </td>
@@ -297,6 +376,84 @@ const esCredito = (c) => c.limite_credito > 0
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- ── Modal documentos de cliente ────────────────────────────────────────── -->
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="showDocModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+        @click.self="showDocModal = false">
+        <div class="bg-stone-900 border border-stone-700/60 rounded-2xl shadow-2xl w-full max-w-md animate-slide-in">
+
+          <div class="flex items-center justify-between px-6 py-4 border-b border-stone-800">
+            <div>
+              <h3 class="font-bold text-neutral-100">Documentos</h3>
+              <p class="text-xs text-stone-500 mt-0.5 truncate max-w-[260px]">{{ docClienteNombre }}</p>
+            </div>
+            <button @click="showDocModal = false" class="btn btn-ghost btn-xs w-8 h-8 p-0 rounded-lg">
+              <i class="fa-solid fa-xmark" />
+            </button>
+          </div>
+
+          <div class="p-6 space-y-4">
+            <!-- Subir nuevo -->
+            <div class="bg-stone-800/40 border border-stone-700/40 rounded-xl p-4 space-y-3">
+              <p class="text-xs font-semibold text-stone-400 uppercase tracking-wide">Subir documento</p>
+              <div>
+                <label class="label text-xs">Tipo</label>
+                <select v-model="docForm.tipo" class="select text-sm">
+                  <option value="tarjeta_iva">Tarjeta IVA</option>
+                  <option value="carta_exencion">Carta de exención</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label class="label text-xs">Archivo (PDF, JPG, PNG)</label>
+                <input @change="onArchivoChange" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  class="block w-full text-sm text-stone-400
+                    file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0
+                    file:text-xs file:font-semibold file:bg-stone-700 file:text-stone-200
+                    hover:file:bg-stone-600 cursor-pointer" />
+              </div>
+              <button @click="subirDocumento" :disabled="savingDoc || !docForm.archivo"
+                class="w-full py-2 rounded-xl text-sm font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white transition-all flex items-center justify-center gap-2">
+                <i v-if="savingDoc" class="fa-solid fa-circle-notch fa-spin text-xs" />
+                <i v-else class="fa-solid fa-cloud-arrow-up text-xs" />
+                {{ savingDoc ? 'Subiendo...' : 'Subir' }}
+              </button>
+            </div>
+
+            <!-- Listado -->
+            <div v-if="loadingDocs" class="text-center py-6 text-stone-500 text-sm">
+              <i class="fa-solid fa-circle-notch fa-spin mr-2" />Cargando...
+            </div>
+            <div v-else-if="!documentos.length" class="text-center py-6 text-stone-600 text-sm">
+              <i class="fa-solid fa-file-slash text-2xl mb-2 block opacity-30" />
+              Sin documentos adjuntos
+            </div>
+            <div v-else class="space-y-2">
+              <div v-for="doc in documentos" :key="doc.id"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-stone-800/40 border border-stone-700/30">
+                <i class="fa-solid fa-file-lines text-amber-500/80 flex-shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-neutral-200 truncate">{{ doc.nombre_archivo }}</div>
+                  <div class="text-[10px] text-stone-500">{{ TIPO_DOC_LABELS[doc.tipo] ?? doc.tipo }}</div>
+                </div>
+                <button @click="descargarDoc(doc.id)" title="Ver / descargar"
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors">
+                  <i class="fa-solid fa-arrow-down-to-line text-xs" />
+                </button>
+                <button @click="eliminarDoc(doc.id)" title="Eliminar"
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-stone-600 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+                  <i class="fa-solid fa-trash text-xs" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
