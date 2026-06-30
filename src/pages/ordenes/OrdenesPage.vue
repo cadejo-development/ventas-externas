@@ -404,15 +404,9 @@ function descargarExportacion() {
 
               <template v-else-if="detalleOrden">
 
-                <!-- Acciones rápidas -->
-                <div v-if="['aprobada','despachada'].includes(detalleOrden.estado)" class="flex gap-2 flex-wrap">
-                  <button v-if="detalleOrden.estado === 'aprobada'"
-                    @click="marcarDespachada" :disabled="savingAction === 'despachar'"
-                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-purple-900/20 border border-purple-700/40 text-purple-300 hover:bg-purple-900/40 disabled:opacity-40 transition-all">
-                    <i v-if="savingAction === 'despachar'" class="fa-solid fa-circle-notch fa-spin" />
-                    <i v-else class="fa-solid fa-truck" />
-                    Marcar despachada
-                  </button>
+                <!-- Acciones rápidas — flujo: Aprobada → Facturada → Despachada -->
+                <div v-if="detalleOrden.estado === 'aprobada'" class="flex gap-2 flex-wrap">
+                  <!-- Paso 1: Marcar facturada (solo si aún no está facturada) -->
                   <button v-if="!detalleOrden.facturado"
                     @click="marcarFacturado" :disabled="savingAction === 'facturar'"
                     class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-emerald-900/20 border border-emerald-700/40 text-emerald-300 hover:bg-emerald-900/40 disabled:opacity-40 transition-all">
@@ -420,10 +414,18 @@ function descargarExportacion() {
                     <i v-else class="fa-solid fa-receipt" />
                     Marcar facturada
                   </button>
-                  <div v-else
-                    class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs bg-emerald-900/20 border border-emerald-700/30 text-emerald-400">
-                    <i class="fa-solid fa-circle-check" />Facturada{{ detalleOrden.facturado_por ? ` · ${detalleOrden.facturado_por}` : '' }}
-                  </div>
+                  <!-- Paso 2: Marcar despachada (solo cuando ya está facturada) -->
+                  <template v-else>
+                    <div class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs bg-emerald-900/20 border border-emerald-700/30 text-emerald-400">
+                      <i class="fa-solid fa-circle-check" />Facturada{{ detalleOrden.facturado_por ? ` · ${detalleOrden.facturado_por}` : '' }}
+                    </div>
+                    <button @click="marcarDespachada" :disabled="savingAction === 'despachar'"
+                      class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-purple-900/20 border border-purple-700/40 text-purple-300 hover:bg-purple-900/40 disabled:opacity-40 transition-all">
+                      <i v-if="savingAction === 'despachar'" class="fa-solid fa-circle-notch fa-spin" />
+                      <i v-else class="fa-solid fa-truck" />
+                      Marcar despachada
+                    </button>
+                  </template>
                 </div>
 
                 <!-- Datos generales -->
