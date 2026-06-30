@@ -89,6 +89,11 @@ const pagoForm       = ref({
   _archivo: null,
 })
 
+const PAGOS_DEMO = [
+  { id: 'd1', fecha: '2026-06-10', forma_pago: 'transferencia', monto: 500.00, comprobante: 'TRF-20240610', comprobante_ruta: null, _demo: true },
+  { id: 'd2', fecha: '2026-06-20', forma_pago: 'cheque',        monto: 300.00, comprobante: 'CHQ-001234',   comprobante_ruta: null, _demo: true },
+]
+
 async function verDetalle(id) {
   drawer.value         = true
   loadingDetalle.value = true
@@ -526,7 +531,7 @@ function descargarExportacion() {
                     <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
                       <i class="fa-solid fa-coins mr-1" />Pagos registrados
                     </h3>
-                    <button v-if="detalleOrden.facturado && ['despachada','completada'].includes(detalleOrden.estado)"
+                    <button v-if="['aprobada','despachada','completada'].includes(detalleOrden.estado)"
                       @click="showPagoForm = !showPagoForm"
                       class="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-colors">
                       <i :class="showPagoForm ? 'fa-solid fa-xmark' : 'fa-solid fa-plus'" />
@@ -587,7 +592,7 @@ function descargarExportacion() {
                   <div v-if="loadingPagos" class="text-center py-4 text-stone-500 text-xs">
                     <i class="fa-solid fa-circle-notch fa-spin mr-1" />Cargando pagos...
                   </div>
-                  <div v-else-if="pagos.length" class="rounded-xl border border-stone-800 overflow-hidden">
+                  <div v-else class="rounded-xl border border-stone-800 overflow-hidden">
                     <table class="w-full text-xs">
                       <thead class="bg-stone-900">
                         <tr>
@@ -599,24 +604,39 @@ function descargarExportacion() {
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-stone-800/60">
-                        <tr v-for="p in pagos" :key="p.id" class="hover:bg-stone-900/40">
-                          <td class="px-3 py-2 text-stone-300">{{ p.fecha?.slice(0,10) }}</td>
-                          <td class="px-3 py-2 text-stone-300 capitalize">{{ p.forma_pago }}</td>
-                          <td class="px-3 py-2 text-right text-emerald-400 font-semibold tabular-nums">{{ fmt(p.monto) }}</td>
-                          <td class="px-3 py-2 text-stone-500">{{ p.comprobante || '—' }}</td>
-                          <td class="px-3 py-2 text-center">
-                            <button v-if="p.comprobante_ruta" @click="verComprobante(p.id)"
-                              title="Ver comprobante"
-                              class="w-6 h-6 rounded-md flex items-center justify-center mx-auto text-amber-400 hover:text-amber-300 hover:bg-stone-700 transition-colors">
-                              <i class="fa-solid fa-file-arrow-down text-xs" />
-                            </button>
-                            <span v-else class="text-stone-700">—</span>
-                          </td>
-                        </tr>
+                        <template v-if="pagos.length">
+                          <tr v-for="p in pagos" :key="p.id" class="hover:bg-stone-900/40">
+                            <td class="px-3 py-2 text-stone-300">{{ p.fecha?.slice(0,10) }}</td>
+                            <td class="px-3 py-2 text-stone-300 capitalize">{{ p.forma_pago }}</td>
+                            <td class="px-3 py-2 text-right text-emerald-400 font-semibold tabular-nums">{{ fmt(p.monto) }}</td>
+                            <td class="px-3 py-2 text-stone-500">{{ p.comprobante || '—' }}</td>
+                            <td class="px-3 py-2 text-center">
+                              <button v-if="p.comprobante_ruta" @click="verComprobante(p.id)"
+                                title="Ver comprobante"
+                                class="w-6 h-6 rounded-md flex items-center justify-center mx-auto text-amber-400 hover:text-amber-300 hover:bg-stone-700 transition-colors">
+                                <i class="fa-solid fa-file-arrow-down text-xs" />
+                              </button>
+                              <span v-else class="text-stone-700">—</span>
+                            </td>
+                          </tr>
+                        </template>
+                        <template v-else>
+                          <tr v-for="p in PAGOS_DEMO" :key="p.id" class="hover:bg-stone-900/40 opacity-40 italic">
+                            <td class="px-3 py-2 text-stone-400">{{ p.fecha }}</td>
+                            <td class="px-3 py-2 text-stone-400 capitalize">{{ p.forma_pago }}</td>
+                            <td class="px-3 py-2 text-right text-emerald-600 font-semibold tabular-nums">{{ fmt(p.monto) }}</td>
+                            <td class="px-3 py-2 text-stone-600">{{ p.comprobante }}</td>
+                            <td class="px-3 py-2 text-center text-stone-700">—</td>
+                          </tr>
+                          <tr>
+                            <td colspan="5" class="px-3 py-1.5 text-center text-[10px] text-stone-700">
+                              — datos de muestra —
+                            </td>
+                          </tr>
+                        </template>
                       </tbody>
                     </table>
                   </div>
-                  <div v-else class="text-center py-5 text-stone-600 text-xs">Sin pagos registrados aún</div>
                 </div>
 
               </template>

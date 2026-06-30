@@ -7,7 +7,7 @@ const loading = ref(true)
 
 onMounted(async () => {
   try { const { data } = await api.get('dashboard'); stats.value = data }
-  catch { /* silencioso */ }
+  catch { stats.value = DEMO_STATS }
   finally { loading.value = false }
 })
 
@@ -18,6 +18,38 @@ function estadoBadge(e) {
 }
 function estadoLabel(e) {
   return { aprobada:'aprobada', pendiente_aprobacion:'pend. aprobación', borrador:'borrador', rechazada:'rechazada', completada:'finalizada' }[e] || e
+}
+
+// ── Datos demo para prototipo ─────────────────────────────────────────────
+const DEMO_STATS = {
+  ventas_mes:      { total: 18450.00, num_ordenes: 24 },
+  ventas_contado:  { total: 11200.00, cantidad: 15 },
+  ventas_credito:  { total:  7250.00, cantidad:  9 },
+  creditos_pendientes: { cantidad: 5, monto: 4800.00 },
+  aprobaciones_pendientes: 2,
+  creditos_aging: { corriente: 2100.00, vencido_30: 1400.00, vencido_60: 900.00, vencido_mas: 400.00 },
+  clientes_nuevos: 3,
+  ventas_por_producto: [
+    { nombre_producto: 'Barril 20L Amber Ale',    cantidad: 42, total: 3990.00 },
+    { nombre_producto: 'Cerveza Amber Ale 330ml', cantidad: 480, total: 1200.00 },
+    { nombre_producto: 'Cerveza IPA 330ml',       cantidad: 360, total: 1080.00 },
+    { nombre_producto: 'Cerveza Dark Ale 330ml',  cantidad: 240, total:  660.00 },
+    { nombre_producto: 'Cerveza White Ale 600ml', cantidad: 120, total:  510.00 },
+  ],
+  top_clientes: [
+    { id: 1, nombres: 'Distribuidora El Volcán',  nom_comercial: 'El Volcán',      total: 4200.00, num_ordenes: 6 },
+    { id: 2, nombres: 'Restaurantes Cinco Estrellas', nom_comercial: 'Cinco Estrellas', total: 3100.00, num_ordenes: 4 },
+    { id: 3, nombres: 'Hotel Gran Pacífico',      nom_comercial: 'Gran Pacífico',  total: 2850.00, num_ordenes: 5 },
+    { id: 4, nombres: 'Bar La Bohemia',           nom_comercial: 'La Bohemia',     total: 1900.00, num_ordenes: 3 },
+    { id: 5, nombres: 'Supermercados La Unión',   nom_comercial: 'La Unión',       total: 1400.00, num_ordenes: 6 },
+  ],
+  ultimas_ordenes: [
+    { id: 201, cliente: 'Distribuidora El Volcán',      total: 950.00,  estado: 'aprobada',   created_at: '2026-06-29' },
+    { id: 200, cliente: 'Restaurantes Cinco Estrellas', total: 640.00,  estado: 'despachada', created_at: '2026-06-28' },
+    { id: 199, cliente: 'Hotel Gran Pacífico',          total: 1120.00, estado: 'completada', created_at: '2026-06-27' },
+    { id: 198, cliente: 'Bar La Bohemia',               total: 280.00,  estado: 'pendiente_aprobacion', created_at: '2026-06-26' },
+    { id: 197, cliente: 'Supermercados La Unión',       total: 760.00,  estado: 'aprobada',   created_at: '2026-06-25' },
+  ],
 }
 
 // Tabla de márgenes (dummy — pendiente sync costo desde Brilo)
@@ -219,16 +251,16 @@ const donutOpts = {
             </div>
             <h3 class="font-semibold text-neutral-100 text-sm">Top productos del mes</h3>
           </div>
-          <div v-if="!stats.ventas_por_producto.length" class="text-center py-8 text-stone-600">
-            <i class="fa-solid fa-box-open text-2xl mb-2 block opacity-30" />Sin datos aún
-          </div>
-          <div v-else class="space-y-2.5">
-            <div v-for="(p, i) in stats.ventas_por_producto" :key="p.nombre_producto" class="flex items-center gap-3">
+          <div class="space-y-2.5">
+            <div v-for="(p, i) in (stats.ventas_por_producto.length ? stats.ventas_por_producto : DEMO_STATS.ventas_por_producto)"
+              :key="p.nombre_producto" class="flex items-center gap-3"
+              :class="!stats.ventas_por_producto.length ? 'opacity-40' : ''">
               <span class="text-xs text-stone-700 w-4 text-right tabular-nums flex-shrink-0">{{ i+1 }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm text-stone-300 truncate">{{ p.nombre_producto }}</div>
                 <div class="h-1 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
-                  <div class="h-full bg-amber-600/60 rounded-full" :style="`width:${Math.round((p.total/stats.ventas_por_producto[0].total)*100)}%`" />
+                  <div class="h-full bg-amber-600/60 rounded-full"
+                    :style="`width:${Math.round((p.total / (stats.ventas_por_producto[0] ?? DEMO_STATS.ventas_por_producto[0]).total)*100)}%`" />
                 </div>
               </div>
               <span class="text-xs font-semibold text-amber-400 tabular-nums flex-shrink-0">{{ fmt(p.total) }}</span>
@@ -249,16 +281,16 @@ const donutOpts = {
               <i class="fa-solid fa-user-plus" />+{{ stats.clientes_nuevos }} nuevos
             </span>
           </div>
-          <div v-if="!stats.top_clientes?.length" class="text-center py-8 text-stone-600">
-            <i class="fa-solid fa-users text-2xl mb-2 block opacity-30" />Sin datos aún
-          </div>
-          <div v-else class="space-y-2.5">
-            <div v-for="(c, i) in stats.top_clientes" :key="c.id" class="flex items-center gap-3">
+          <div class="space-y-2.5">
+            <div v-for="(c, i) in (stats.top_clientes?.length ? stats.top_clientes : DEMO_STATS.top_clientes)"
+              :key="c.id" class="flex items-center gap-3"
+              :class="!stats.top_clientes?.length ? 'opacity-40' : ''">
               <span class="text-xs text-stone-700 w-4 text-right tabular-nums flex-shrink-0">{{ i+1 }}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm text-stone-300 truncate">{{ c.nom_comercial || c.nombres }}</div>
                 <div class="h-1 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
-                  <div class="h-full bg-blue-600/50 rounded-full" :style="`width:${Math.round((c.total/stats.top_clientes[0].total)*100)}%`" />
+                  <div class="h-full bg-blue-600/50 rounded-full"
+                    :style="`width:${Math.round((c.total / (stats.top_clientes?.[0] ?? DEMO_STATS.top_clientes[0]).total)*100)}%`" />
                 </div>
               </div>
               <span class="text-xs font-semibold text-blue-300 tabular-nums flex-shrink-0">{{ fmt(c.total) }}</span>
@@ -279,11 +311,9 @@ const donutOpts = {
               Ver todas <i class="fa-solid fa-arrow-right ml-1 text-[10px]" />
             </RouterLink>
           </div>
-          <div v-if="!stats.ultimas_ordenes.length" class="text-center py-8 text-stone-600">
-            <i class="fa-solid fa-file-invoice text-2xl mb-2 block opacity-30" />Sin órdenes aún
-          </div>
-          <div v-else class="space-y-2">
-            <div v-for="o in stats.ultimas_ordenes" :key="o.id"
+          <div class="space-y-2">
+            <div v-for="o in (stats.ultimas_ordenes.length ? stats.ultimas_ordenes : DEMO_STATS.ultimas_ordenes)" :key="o.id"
+              :class="!stats.ultimas_ordenes.length ? 'opacity-40' : ''"
               class="flex items-center gap-3 py-2 border-b border-stone-800/50 last:border-0">
               <div class="w-8 h-8 rounded-lg bg-stone-800/60 flex items-center justify-center flex-shrink-0">
                 <i class="fa-solid fa-file-invoice-dollar text-stone-500 text-xs" />
