@@ -129,6 +129,25 @@ const donutOpts = {
           </div>
           <div class="text-2xl font-bold text-blue-300 tabular-nums">{{ fmt(stats.creditos_pendientes.monto) }}</div>
           <div class="text-xs text-stone-500 mt-1">{{ stats.creditos_pendientes.cantidad }} órdenes</div>
+          <!-- Aging breakdown -->
+          <div v-if="stats.creditos_aging" class="mt-3 pt-3 border-t border-stone-800/60 space-y-1.5">
+            <div class="flex justify-between text-[10px]">
+              <span class="text-stone-500">Corriente</span>
+              <span class="text-emerald-400 font-semibold tabular-nums">{{ fmt(stats.creditos_aging.corriente) }}</span>
+            </div>
+            <div class="flex justify-between text-[10px]">
+              <span class="text-stone-500">Vencido 1-30 días</span>
+              <span class="text-amber-400 font-semibold tabular-nums">{{ fmt(stats.creditos_aging.vencido_30) }}</span>
+            </div>
+            <div class="flex justify-between text-[10px]">
+              <span class="text-stone-500">Vencido 31-60 días</span>
+              <span class="text-orange-400 font-semibold tabular-nums">{{ fmt(stats.creditos_aging.vencido_60) }}</span>
+            </div>
+            <div class="flex justify-between text-[10px]">
+              <span class="text-stone-500">Vencido +60 días</span>
+              <span class="text-red-400 font-semibold tabular-nums">{{ fmt(stats.creditos_aging.vencido_mas) }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="card" :class="stats.aprobaciones_pendientes > 0 ? 'border-red-900/40' : ''">

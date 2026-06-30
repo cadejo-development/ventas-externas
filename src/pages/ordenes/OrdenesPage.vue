@@ -79,12 +79,14 @@ const loadingDetalle = ref(false)
 const savingAction   = ref('')
 
 // Pagos
-const pagos        = ref([])
-const loadingPagos = ref(false)
-const showPagoForm = ref(false)
-const pagoForm     = ref({
+const pagos          = ref([])
+const loadingPagos   = ref(false)
+const showPagoForm   = ref(false)
+const pagoArchivoRef = ref(null)
+const pagoForm       = ref({
   fecha: new Date().toISOString().slice(0,10), forma_pago: 'transferencia',
-  monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: ''
+  monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: '',
+  _archivo: null,
 })
 
 async function verDetalle(id) {
@@ -112,20 +114,47 @@ async function cargarPagos(ordenId) {
   finally { loadingPagos.value = false }
 }
 
+function onPagoArchivoChange(e) {
+  pagoForm.value._archivo = e.target.files[0] ?? null
+}
+
 async function guardarPago() {
   if (!pagoForm.value.monto) { toast('Ingresa el monto', 'error'); return }
   savingAction.value = 'pago'
   try {
-    await api.post(`ordenes/${detalleOrden.value.id}/pagos`, pagoForm.value)
+    let payload
+    if (pagoForm.value._archivo) {
+      const fd = new FormData()
+      fd.append('fecha',          pagoForm.value.fecha)
+      fd.append('forma_pago',     pagoForm.value.forma_pago)
+      fd.append('monto',          pagoForm.value.monto)
+      fd.append('comprobante',    pagoForm.value.comprobante)
+      fd.append('registrado_por', pagoForm.value.registrado_por)
+      fd.append('notas',          pagoForm.value.notas)
+      fd.append('archivo',        pagoForm.value._archivo)
+      payload = fd
+    } else {
+      payload = { ...pagoForm.value }
+      delete payload._archivo
+    }
+    await api.post(`ordenes/${detalleOrden.value.id}/pagos`, payload)
     toast('Pago registrado')
     showPagoForm.value = false
-    pagoForm.value = { fecha: new Date().toISOString().slice(0,10), forma_pago: 'transferencia', monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: '' }
+    pagoForm.value = { fecha: new Date().toISOString().slice(0,10), forma_pago: 'transferencia', monto: '', comprobante: '', registrado_por: session?.nombre || '', notas: '', _archivo: null }
+    if (pagoArchivoRef.value) pagoArchivoRef.value.value = ''
     const { data } = await api.get(`ordenes/${detalleOrden.value.id}`)
     detalleOrden.value = data
     await cargarPagos(data.id)
     await cargar(page.value)
   } catch (e) { toast(e.response?.data?.message || 'Error al registrar pago', 'error') }
   finally { savingAction.value = '' }
+}
+
+async function verComprobante(pagoId) {
+  try {
+    const { data } = await api.get(`ordenes/${detalleOrden.value.id}/pagos/${pagoId}/comprobante`)
+    window.open(data.url, '_blank')
+  } catch { toast('Error al obtener comprobante', 'error') }
 }
 
 async function marcarDespachada() {
@@ -532,10 +561,19 @@ function descargarExportacion() {
                           </div>
                         </div>
                         <div>
-                          <label class="label text-xs">Comprobante</label>
+                          <label class="label text-xs">N° referencia</label>
                           <input v-model="pagoForm.comprobante" type="text" placeholder="N° ref..."
                             class="input text-sm h-9" />
                         </div>
+                      </div>
+                      <div>
+                        <label class="label text-xs">Comprobante (PDF, imagen)</label>
+                        <input ref="pagoArchivoRef" @change="onPagoArchivoChange" type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          class="block w-full text-xs text-stone-400
+                            file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0
+                            file:text-xs file:font-semibold file:bg-stone-700 file:text-stone-200
+                            hover:file:bg-stone-600 cursor-pointer" />
                       </div>
                       <button @click="guardarPago" :disabled="savingAction === 'pago'"
                         class="w-full py-2 rounded-xl text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2">
@@ -557,6 +595,7 @@ function descargarExportacion() {
                           <th class="px-3 py-2 text-left text-stone-400">Forma</th>
                           <th class="px-3 py-2 text-right text-stone-400">Monto</th>
                           <th class="px-3 py-2 text-left text-stone-400">Ref.</th>
+                          <th class="px-3 py-2 text-center text-stone-400">Doc.</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-stone-800/60">
@@ -565,6 +604,14 @@ function descargarExportacion() {
                           <td class="px-3 py-2 text-stone-300 capitalize">{{ p.forma_pago }}</td>
                           <td class="px-3 py-2 text-right text-emerald-400 font-semibold tabular-nums">{{ fmt(p.monto) }}</td>
                           <td class="px-3 py-2 text-stone-500">{{ p.comprobante || '—' }}</td>
+                          <td class="px-3 py-2 text-center">
+                            <button v-if="p.comprobante_ruta" @click="verComprobante(p.id)"
+                              title="Ver comprobante"
+                              class="w-6 h-6 rounded-md flex items-center justify-center mx-auto text-amber-400 hover:text-amber-300 hover:bg-stone-700 transition-colors">
+                              <i class="fa-solid fa-file-arrow-down text-xs" />
+                            </button>
+                            <span v-else class="text-stone-700">—</span>
+                          </td>
                         </tr>
                       </tbody>
                     </table>
