@@ -44,11 +44,11 @@ const DEMO_STATS = {
     { id: 5, nombres: 'Supermercados La Unión',   nom_comercial: 'La Unión',       total: 1400.00, num_ordenes: 6 },
   ],
   ultimas_ordenes: [
-    { id: 201, cliente: 'Distribuidora El Volcán',      total: 950.00,  estado: 'aprobada',   created_at: '2026-06-29' },
-    { id: 200, cliente: 'Restaurantes Cinco Estrellas', total: 640.00,  estado: 'despachada', created_at: '2026-06-28' },
-    { id: 199, cliente: 'Hotel Gran Pacífico',          total: 1120.00, estado: 'completada', created_at: '2026-06-27' },
-    { id: 198, cliente: 'Bar La Bohemia',               total: 280.00,  estado: 'pendiente_aprobacion', created_at: '2026-06-26' },
-    { id: 197, cliente: 'Supermercados La Unión',       total: 760.00,  estado: 'aprobada',   created_at: '2026-06-25' },
+    { id: 205, cliente: 'Distribuidora El Volcán',      total: 950.00,  estado: 'aprobada',   created_at: '2026-06-30' }, // pendiente de facturar
+    { id: 204, cliente: 'Restaurantes Cinco Estrellas', total: 640.00,  estado: 'aprobada',   created_at: '2026-06-29' }, // facturada, en espera de pago/despacho
+    { id: 203, cliente: 'Hotel Gran Pacífico',          total: 1120.00, estado: 'despachada', created_at: '2026-06-28' }, // facturada → pagada → despachada
+    { id: 202, cliente: 'Bar La Bohemia',               total: 280.00,  estado: 'completada', created_at: '2026-06-27' }, // ciclo completo
+    { id: 201, cliente: 'Supermercados La Unión',       total: 760.00,  estado: 'pendiente_aprobacion', created_at: '2026-06-26' },
   ],
 }
 

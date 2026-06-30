@@ -89,9 +89,10 @@ const pagoForm       = ref({
   _archivo: null,
 })
 
+// Pagos demo — ilustran que el cliente puede pagar antes del despacho
 const PAGOS_DEMO = [
-  { id: 'd1', fecha: '2026-06-10', forma_pago: 'transferencia', monto: 500.00, comprobante: 'TRF-20240610', comprobante_ruta: null, _demo: true },
-  { id: 'd2', fecha: '2026-06-20', forma_pago: 'cheque',        monto: 300.00, comprobante: 'CHQ-001234',   comprobante_ruta: null, _demo: true },
+  { id: 'd1', fecha: '2026-06-28', forma_pago: 'transferencia', monto: 800.00, comprobante: 'TRF-062800412', comprobante_ruta: null, _demo: true },
+  { id: 'd2', fecha: '2026-06-30', forma_pago: 'transferencia', monto: 560.00, comprobante: 'TRF-063000089', comprobante_ruta: null, _demo: true },
 ]
 
 async function verDetalle(id) {
