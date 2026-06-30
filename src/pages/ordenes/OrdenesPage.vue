@@ -169,22 +169,47 @@ const hayFiltros = computed(() => busqueda.value || fechaDesde.value || fechaHas
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/cadejo-ventas'
 
-function exportarBriloFacturas() {
-  const params = new URLSearchParams()
-  if (fechaDesde.value) params.set('fecha_desde', fechaDesde.value)
-  if (fechaHasta.value) params.set('fecha_hasta', fechaHasta.value)
-  window.open(`${API_BASE}/export/brilo-facturas?${params}`, '_blank')
+// ── Modal de exportación ─────────────────────────────────────────────────────
+const showExportModal  = ref(false)
+const exportTipo       = ref('facturas')   // 'facturas' | 'clientes' | 'contabilidad'
+const exportFechaDesde = ref('')
+const exportFechaHasta = ref('')
+const exportTipoDoc    = ref('')           // '' | 'ccf' | 'fcf'
+const exportTipoVenta  = ref('')           // '' | 'credito' | 'contado'
+const exportEstado     = ref('')           // '' | 'aprobada' | 'despachada' | 'completada'
+const exportInactivos  = ref(false)
+
+function abrirExportModal() {
+  exportTipo.value       = 'facturas'
+  exportFechaDesde.value = ''
+  exportFechaHasta.value = ''
+  exportTipoDoc.value    = ''
+  exportTipoVenta.value  = ''
+  exportEstado.value     = ''
+  exportInactivos.value  = false
+  showExportModal.value  = true
 }
 
-function exportarBriloClientes() {
-  window.open(`${API_BASE}/export/brilo-clientes`, '_blank')
-}
+function descargarExportacion() {
+  const p = new URLSearchParams()
+  if (exportFechaDesde.value) p.set('fecha_desde', exportFechaDesde.value)
+  if (exportFechaHasta.value) p.set('fecha_hasta', exportFechaHasta.value)
 
-function exportarContabilidad() {
-  const params = new URLSearchParams()
-  if (fechaDesde.value) params.set('fecha_desde', fechaDesde.value)
-  if (fechaHasta.value) params.set('fecha_hasta', fechaHasta.value)
-  window.open(`${API_BASE}/export/contabilidad-csv?${params}`, '_blank')
+  if (exportTipo.value === 'facturas') {
+    if (exportTipoDoc.value)   p.set('tipo_documento', exportTipoDoc.value)
+    if (exportTipoVenta.value) p.set('tipo_venta', exportTipoVenta.value)
+    if (exportEstado.value)    p.set('estado', exportEstado.value)
+    window.open(`${API_BASE}/export/brilo-facturas?${p}`, '_blank')
+  } else if (exportTipo.value === 'clientes') {
+    if (exportInactivos.value) p.set('incluir_inactivos', '1')
+    window.open(`${API_BASE}/export/brilo-clientes?${p}`, '_blank')
+  } else {
+    if (exportTipoDoc.value)   p.set('tipo_documento', exportTipoDoc.value)
+    if (exportTipoVenta.value) p.set('tipo_venta', exportTipoVenta.value)
+    if (exportEstado.value)    p.set('estado', exportEstado.value)
+    window.open(`${API_BASE}/export/contabilidad-csv?${p}`, '_blank')
+  }
+  showExportModal.value = false
 }
 </script>
 
@@ -192,31 +217,9 @@ function exportarContabilidad() {
   <div>
     <PageHeader title="Órdenes de venta">
       <template #actions>
-        <!-- Exportar Brilo -->
-        <div class="relative group">
-          <button class="btn btn-secondary">
-            <i class="fa-solid fa-file-excel mr-1.5" />Exportar Brilo
-            <i class="fa-solid fa-chevron-down ml-1.5 text-xs" />
-          </button>
-          <div class="absolute right-0 top-full mt-1.5 bg-stone-900 border border-stone-700 rounded-xl shadow-xl overflow-hidden z-20 hidden group-hover:block min-w-[220px]">
-            <button @click="exportarBriloFacturas"
-              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-amber-500/10 hover:text-amber-300 transition-colors flex items-center gap-2.5">
-              <i class="fa-solid fa-file-invoice text-amber-500/70 w-4" />
-              Facturas de venta
-            </button>
-            <button @click="exportarBriloClientes"
-              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-amber-500/10 hover:text-amber-300 transition-colors flex items-center gap-2.5">
-              <i class="fa-solid fa-users text-amber-500/70 w-4" />
-              Catálogo clientes
-            </button>
-            <div class="border-t border-stone-800 my-1" />
-            <button @click="exportarContabilidad"
-              class="w-full px-4 py-2.5 text-left text-sm text-stone-200 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors flex items-center gap-2.5">
-              <i class="fa-solid fa-file-csv text-emerald-500/70 w-4" />
-              CSV Contabilidad
-            </button>
-          </div>
-        </div>
+        <button @click="abrirExportModal" class="btn btn-secondary">
+          <i class="fa-solid fa-download mr-1.5" />Exportar
+        </button>
 
         <RouterLink to="/ordenes/nueva" class="btn btn-primary">
           <i class="fa-solid fa-plus mr-2" />Nueva orden
@@ -583,6 +586,98 @@ function exportarContabilidad() {
         </Transition>
       </div>
     </Transition>
+
+    <!-- ── Modal de exportación ──────────────────────────────────────────── -->
+    <Transition name="drawer-fade">
+      <div v-if="showExportModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showExportModal = false">
+        <div class="absolute inset-0 bg-black/60" @click="showExportModal = false" />
+        <div class="relative bg-stone-950 border border-stone-800 rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+
+          <div class="flex items-center justify-between px-6 py-4 border-b border-stone-800">
+            <h2 class="text-base font-semibold text-neutral-100">Exportar datos</h2>
+            <button @click="showExportModal = false" class="text-stone-500 hover:text-stone-200 transition text-xl leading-none p-1">
+              <i class="fa-solid fa-xmark" />
+            </button>
+          </div>
+
+          <div class="px-6 py-5 space-y-5">
+
+            <!-- Tipo de archivo -->
+            <div>
+              <label class="block text-xs text-stone-400 font-medium mb-2">Tipo de archivo</label>
+              <div class="grid grid-cols-3 gap-2">
+                <button v-for="[val, label] in [['facturas','Facturas Brilo'],['clientes','Clientes Brilo'],['contabilidad','CSV Contabilidad']]"
+                  :key="val" type="button"
+                  @click="exportTipo = val"
+                  class="py-2.5 px-2 rounded-xl border text-xs font-medium transition text-center"
+                  :class="exportTipo === val
+                    ? 'bg-amber-600/20 border-amber-600 text-amber-300'
+                    : 'bg-stone-900 border-stone-700 text-stone-400 hover:border-stone-600'">
+                  {{ label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Rango de fechas (no aplica para clientes) -->
+            <div v-if="exportTipo !== 'clientes'" class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-stone-400 font-medium mb-1.5">Fecha desde</label>
+                <input v-model="exportFechaDesde" type="date" class="input h-9 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs text-stone-400 font-medium mb-1.5">Fecha hasta</label>
+                <input v-model="exportFechaHasta" type="date" class="input h-9 text-sm" />
+              </div>
+            </div>
+
+            <!-- Filtros adicionales para facturas y contabilidad -->
+            <div v-if="exportTipo !== 'clientes'" class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs text-stone-400 font-medium mb-1.5">Tipo doc.</label>
+                <select v-model="exportTipoDoc" class="select h-9 text-sm">
+                  <option value="">Todos</option>
+                  <option value="ccf">CCF</option>
+                  <option value="fcf">CF</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-stone-400 font-medium mb-1.5">Tipo venta</label>
+                <select v-model="exportTipoVenta" class="select h-9 text-sm">
+                  <option value="">Todos</option>
+                  <option value="credito">Crédito</option>
+                  <option value="contado">Contado</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-stone-400 font-medium mb-1.5">Estado</label>
+                <select v-model="exportEstado" class="select h-9 text-sm">
+                  <option value="">Todos</option>
+                  <option value="aprobada">Aprobada</option>
+                  <option value="despachada">Despachada</option>
+                  <option value="completada">Completada</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Incluir inactivos (solo clientes) -->
+            <div v-if="exportTipo === 'clientes'" class="flex items-center gap-2.5">
+              <input id="chk-inactivos" type="checkbox" v-model="exportInactivos" class="accent-amber-500" />
+              <label for="chk-inactivos" class="text-sm text-stone-300 cursor-pointer">Incluir clientes inactivos</label>
+            </div>
+
+          </div>
+
+          <div class="px-6 py-4 border-t border-stone-800 flex justify-end gap-3">
+            <button @click="showExportModal = false" class="btn btn-secondary">Cancelar</button>
+            <button @click="descargarExportacion" class="btn btn-primary">
+              <i class="fa-solid fa-download mr-1.5" />Descargar
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
