@@ -103,7 +103,7 @@ async function verDetalle(id) {
   try {
     const { data } = await api.get(`ordenes/${id}`)
     detalleOrden.value = data
-    if (data.tipo_venta === 'credito') cargarPagos(id)
+    if (data.tipo_venta === 'credito' && data.facturado) cargarPagos(id)
   } catch (e) { console.error(e) }
   finally { loadingDetalle.value = false }
 }
@@ -526,13 +526,12 @@ function descargarExportacion() {
                 </div>
 
                 <!-- ── Pagos (solo crédito) ────────────────────────────────── -->
-                <div v-if="detalleOrden.tipo_venta === 'credito'">
+                <div v-if="detalleOrden.tipo_venta === 'credito' && detalleOrden.facturado">
                   <div class="flex items-center justify-between mb-2">
                     <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
                       <i class="fa-solid fa-coins mr-1" />Pagos registrados
                     </h3>
-                    <button v-if="detalleOrden.facturado"
-                      @click="showPagoForm = !showPagoForm"
+                    <button @click="showPagoForm = !showPagoForm"
                       class="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-colors">
                       <i :class="showPagoForm ? 'fa-solid fa-xmark' : 'fa-solid fa-plus'" />
                       {{ showPagoForm ? 'Cancelar' : 'Registrar pago' }}
