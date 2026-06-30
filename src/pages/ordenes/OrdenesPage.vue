@@ -531,7 +531,7 @@ function descargarExportacion() {
                     <h3 class="text-xs font-semibold text-stone-400 uppercase tracking-wide">
                       <i class="fa-solid fa-coins mr-1" />Pagos registrados
                     </h3>
-                    <button v-if="['aprobada','despachada','completada'].includes(detalleOrden.estado)"
+                    <button v-if="detalleOrden.facturado"
                       @click="showPagoForm = !showPagoForm"
                       class="text-xs text-amber-500 hover:text-amber-400 flex items-center gap-1 transition-colors">
                       <i :class="showPagoForm ? 'fa-solid fa-xmark' : 'fa-solid fa-plus'" />
